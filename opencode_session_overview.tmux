@@ -7,7 +7,7 @@ CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/helpers.sh
 . "$CURRENT_DIR/scripts/helpers.sh"
 
-overview_key="$(get_tmux_option @opencode_overview_key 'O')"
+overview_key="$(get_tmux_option @opencode_overview_key 'o')"
 
 tmux bind-key "$overview_key" \
   run-shell "$CURRENT_DIR/scripts/list.sh '#{client_name}'"

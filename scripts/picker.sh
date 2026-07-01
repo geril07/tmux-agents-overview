@@ -12,18 +12,17 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 session_has_opencode_pane() {
   local session="$1"
-  tmux list-panes -t "$session" -F '#{pane_id}\t#{pane_current_command}\t#{pane_current_path}' 2>/dev/null |
-    awk -F '\t' '$2 == "opencode" || $2 == "open-code" { print $1 "\t" $3; exit }'
+  tmux list-panes -t "$session" -F '#{pane_id}\t#{window_id}\t#{pane_current_command}\t#{pane_current_path}' 2>/dev/null |
+    awk -F '\t' '$3 == "opencode" || $3 == "open-code" { print $1 "\t" $2 "\t" $4; exit }'
 }
 
 rank_for_state() {
   case "$1" in
   waiting) printf '0' ;;
   idle) printf '1' ;;
-  error) printf '2' ;;
-  unknown) printf '3' ;;
-  working) printf '4' ;;
-  *) printf '3' ;;
+  unknown) printf '2' ;;
+  working) printf '3' ;;
+  *) printf '2' ;;
   esac
 }
 
@@ -31,19 +30,19 @@ icon_for_state() {
   case "$1" in
   waiting) printf '\033[33m●\033[0m waiting' ;;
   idle) printf '\033[32m●\033[0m idle   ' ;;
-  error) printf '\033[31m●\033[0m error  ' ;;
   working) printf '\033[35m●\033[0m working' ;;
   unknown | *) printf '\033[90m●\033[0m unknown' ;;
   esac
 }
 
 emit_rows() {
-  local now session state at pane cwd detected target display_cwd rank icon ago reason session_id tool detail
+  local now session state at pane window cwd detected target display_cwd rank icon ago reason session_id tool detail status line
   now=$(date +%s)
 
   tmux list-sessions -F '#{session_name}' 2>/dev/null | while IFS= read -r session; do
     state="$(tmux show-options -qv -t "$session" @opencode_state 2>/dev/null)"
     pane="$(tmux show-options -qv -t "$session" @opencode_pane 2>/dev/null)"
+    window="$(tmux show-options -qv -t "$session" @opencode_window 2>/dev/null)"
     cwd="$(tmux show-options -qv -t "$session" @opencode_cwd 2>/dev/null)"
     at="$(tmux show-options -qv -t "$session" @opencode_state_at 2>/dev/null)"
     reason="$(tmux show-options -qv -t "$session" @opencode_reason 2>/dev/null)"
@@ -63,8 +62,11 @@ emit_rows() {
     if [ -z "$pane" ] && [ -n "$detected" ]; then
       pane="$(printf '%s' "$detected" | cut -f1)"
     fi
+    if [ -z "$window" ] && [ -n "$detected" ]; then
+      window="$(printf '%s' "$detected" | cut -f2)"
+    fi
     if [ -z "$cwd" ] && [ -n "$detected" ]; then
-      cwd="$(printf '%s' "$detected" | cut -f2-)"
+      cwd="$(printf '%s' "$detected" | cut -f3-)"
     fi
 
     target="$session"
@@ -88,13 +90,20 @@ emit_rows() {
       fi
     fi
     [ -z "$detail" ] && detail='-'
+    if [ "$state" = "unknown" ] && { [ "$detail" = "session" ] || [ "$detail" = "status" ]; }; then
+      detail='-'
+    fi
+
+    status="$icon"
 
     display_cwd="$(short_home_path "$cwd")"
     [ -z "$display_cwd" ] && display_cwd='-'
 
-    # rank, session, target are hidden. Visible: state, age, session, cwd, detail.
-    printf '%s\t%s\t%s\t%s\t%5s\t%s\t%s\t%s\n' \
-      "$rank" "$session" "$target" "$icon" "$ago" "$session" "$display_cwd" "$detail"
+    line="$(printf '%-24.24s  %s  %5s  %s' "$session" "$status" "$ago" "$display_cwd")"
+
+    # rank, session, target, window, raw detail are hidden. Visible line is preformatted.
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$rank" "$session" "$target" "$window" "$line" "$detail"
   done | sort -t$'\t' -k1,1n -k5,5n
 }
 
@@ -109,12 +118,11 @@ if ! command -v fzf >/dev/null 2>&1; then
 fi
 
 self="${BASH_SOURCE[0]}"
-export FZF_DEFAULT_OPTS=''
+header=$'OpenCode sessions\nenter: jump  ·  ctrl-x: kill session  ·  ctrl-r: refresh'
 
-sel=$(emit_rows | fzf --ansi --delimiter='\t' --with-nth=4,5,6,7,8 \
-  --reverse --cycle \
-  --header='OpenCode sessions · enter: jump · ctrl-x: kill session · ctrl-r: refresh' \
-  --preview='tmux capture-pane -ept {3}' --preview-window='right,62%,wrap' \
+sel=$(emit_rows | fzf --ansi --delimiter='\t' --with-nth=5 \
+  --height=100% --reverse --cycle \
+  --header="$header" \
   --bind="ctrl-x:execute-silent(tmux kill-session -t {2})+reload($self --list)" \
   --bind="ctrl-r:reload($self --list)")
 
@@ -122,14 +130,18 @@ sel=$(emit_rows | fzf --ansi --delimiter='\t' --with-nth=4,5,6,7,8 \
 
 target_session="$(printf '%s' "$sel" | cut -f2)"
 target_pane="$(printf '%s' "$sel" | cut -f3)"
+target_window="$(printf '%s' "$sel" | cut -f4)"
 parent="$(tmux show-options -gqv @opencode_overview_parent 2>/dev/null)"
-
-if [ -n "$parent" ]; then
-  tmux switch-client -c "$parent" -t "$target_session" 2>/dev/null || true
-else
-  tmux switch-client -t "$target_session" 2>/dev/null || true
-fi
 
 case "$target_pane" in
 %*) tmux select-pane -t "$target_pane" 2>/dev/null || true ;;
 esac
+
+target="$target_session"
+[ -n "$target_window" ] && target="$target_window"
+
+if [ -n "$parent" ]; then
+  tmux switch-client -c "$parent" -t "$target" 2>/dev/null || true
+else
+  tmux switch-client -t "$target" 2>/dev/null || true
+fi

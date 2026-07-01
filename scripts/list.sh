@@ -8,8 +8,8 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$DIR/helpers.sh"
 
 client="${1:-}"
-w="$(get_tmux_option @opencode_overview_popup_width '90%')"
-h="$(get_tmux_option @opencode_overview_popup_height '90%')"
+w="$(get_tmux_option @opencode_overview_popup_width '50%')"
+h="$(get_tmux_option @opencode_overview_popup_height '75%')"
 
 if [ -n "$client" ]; then
   tmux set-option -g @opencode_overview_parent "$client"

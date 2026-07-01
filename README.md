@@ -8,14 +8,15 @@ options as the state store and `fzf` as the overlay UI.
 
 ## Features
 
-- `prefix + O` opens an OpenCode overview popup.
+- `prefix + o` opens an OpenCode overview popup.
 - Lists tmux sessions that have OpenCode status or a detectable OpenCode pane.
-- Shows `working`, `waiting`, `idle`, `error`, or `unknown`.
+- Shows `working`, `waiting`, `idle`, or `unknown`.
 - Sorts sessions needing attention first.
-- Shows a live `capture-pane` preview for the selected session.
+- `alt-p` toggles a bottom preview for the selected OpenCode pane/session.
 - `enter` jumps to the selected tmux session/pane.
 - `ctrl-x` kills the selected tmux session.
 - `ctrl-r` refreshes the list.
+- Inherits `FZF_DEFAULT_OPTS`, but forces `--height=100%` so fzf fills the tmux popup.
 
 ## Requirements
 
@@ -58,9 +59,9 @@ export TMUX_OPENCODE_OVERVIEW_STATE=/home/geril/code/oss/herdr-to-tmux/tmux-open
 Set these before loading the plugin:
 
 ```tmux
-set -g @opencode_overview_key 'O'
-set -g @opencode_overview_popup_width '90%'
-set -g @opencode_overview_popup_height '90%'
+set -g @opencode_overview_key 'o'
+set -g @opencode_overview_popup_width '50%'
+set -g @opencode_overview_popup_height '75%'
 ```
 
 ## State Model
@@ -68,7 +69,7 @@ set -g @opencode_overview_popup_height '90%'
 The OpenCode bridge writes session-scoped tmux options:
 
 ```text
-@opencode_state       working | waiting | idle | error | unknown
+@opencode_state       working | waiting | idle | unknown
 @opencode_state_at    unix timestamp
 @opencode_session_id  native OpenCode session id, when available
 @opencode_pane        tmux pane id that reported status
@@ -91,7 +92,7 @@ session.status idle    -> idle / done
 session.idle           -> idle / done
 permission.asked       -> waiting / permission
 question.asked         -> waiting / question
-session.error          -> error / error
+session.error          -> unknown / error
 ```
 
 The bridge intentionally uses only OpenCode's `event` callback. This keeps the

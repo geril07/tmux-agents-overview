@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Record the current OpenCode pane's state on its tmux session.
-# Usage: state.sh <working|waiting|idle|error|unknown> [reason] [session_id] [tool]
+# Usage: state.sh <working|waiting|idle|unknown|session> [reason] [session_id] [tool]
 
 set -uo pipefail
 
@@ -16,7 +16,7 @@ session_id="$(sanitize_tmux_value "${3:-}")"
 tool="$(sanitize_tmux_value "${4:-}")"
 
 case "$state" in
-working | waiting | idle | error | unknown) ;;
+working | waiting | idle | unknown | session) ;;
 *) state="unknown" ;;
 esac
 
@@ -26,8 +26,6 @@ session="$(tmux display-message -p -t "$TMUX_PANE" '#{session_name}' 2>/dev/null
 cwd="$(tmux display-message -p -t "$TMUX_PANE" '#{pane_current_path}' 2>/dev/null)"
 window="$(tmux display-message -p -t "$TMUX_PANE" '#{window_id}' 2>/dev/null)"
 
-tmux set-option -t "$session" @opencode_state "$state"
-tmux set-option -t "$session" @opencode_state_at "$(date +%s)"
 tmux set-option -t "$session" @opencode_pane "$TMUX_PANE"
 
 [ -n "$cwd" ] && tmux set-option -t "$session" @opencode_cwd "$(sanitize_tmux_value "$cwd")"
@@ -36,6 +34,13 @@ tmux set-option -t "$session" @opencode_pane "$TMUX_PANE"
 if [ -n "$session_id" ]; then
   tmux set-option -t "$session" @opencode_session_id "$session_id"
 fi
+
+if [ "$state" = "session" ]; then
+  exit 0
+fi
+
+tmux set-option -t "$session" @opencode_state "$state"
+tmux set-option -t "$session" @opencode_state_at "$(date +%s)"
 
 if [ -n "$reason" ]; then
   tmux set-option -t "$session" @opencode_reason "$reason"

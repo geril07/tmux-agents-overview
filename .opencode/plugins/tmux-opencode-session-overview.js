@@ -99,7 +99,7 @@ export const TmuxOpenCodeSessionOverview = async () => ({
     switch (event.type) {
       case "session.created":
       case "session.updated":
-        report("unknown", "session", sessionID);
+        report("session", "", sessionID);
         break;
       case "session.status": {
         const [state, reason] = statusToState(props.status);
@@ -122,7 +122,7 @@ export const TmuxOpenCodeSessionOverview = async () => ({
         report("working", "busy", sessionID);
         break;
       case "session.error":
-        report("error", "error", sessionID);
+        report("unknown", "error", sessionID);
         break;
       default:
         break;
