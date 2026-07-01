@@ -31,7 +31,7 @@ options as the state store and `fzf` as the overlay UI.
 After publishing this repository, add it to your tmux config:
 
 ```tmux
-set -g @plugin '<github-user>/tmux-opencode-session-overview'
+set -g @plugin 'geril07/tmux-opencode-session-overview'
 ```
 
 Then press `prefix` + <kbd>I</kbd> to install.
@@ -41,7 +41,7 @@ Then press `prefix` + <kbd>I</kbd> to install.
 Clone the repository:
 
 ```sh
-git clone https://github.com/<github-user>/tmux-opencode-session-overview ~/.tmux/plugins/tmux-opencode-session-overview
+git clone https://github.com/geril07/tmux-opencode-session-overview ~/.tmux/plugins/tmux-opencode-session-overview
 ```
 
 Add this to your tmux config:
