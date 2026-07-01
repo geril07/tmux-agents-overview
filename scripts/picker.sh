@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Interactive picker for tmux sessions that contain OpenCode.
+# Interactive picker for tmux panes that contain OpenCode.
 #
 #   picker.sh        fzf picker
 #   picker.sh --list print rows only, used by fzf reload bindings
@@ -9,12 +9,6 @@ set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=helpers.sh
 . "$DIR/helpers.sh"
-
-session_has_opencode_pane() {
-  local session="$1"
-  tmux list-panes -t "$session" -F '#{pane_id}\t#{window_id}\t#{pane_current_command}\t#{pane_current_path}' 2>/dev/null |
-    awk -F '\t' '$3 == "opencode" || $3 == "open-code" { print $1 "\t" $2 "\t" $4; exit }'
-}
 
 rank_for_state() {
   case "$1" in
@@ -36,75 +30,61 @@ icon_for_state() {
 }
 
 emit_rows() {
-  local now session state at pane window cwd detected target display_cwd rank icon ago reason session_id tool detail status line
+  local now session window window_index pane pane_index command cwd state at display_cwd rank icon ago reason tool detail status label line saved_window saved_cwd
   now=$(date +%s)
 
-  tmux list-sessions -F '#{session_name}' 2>/dev/null | while IFS= read -r session; do
-    state="$(tmux show-options -qv -t "$session" @opencode_state 2>/dev/null)"
-    pane="$(tmux show-options -qv -t "$session" @opencode_pane 2>/dev/null)"
-    window="$(tmux show-options -qv -t "$session" @opencode_window 2>/dev/null)"
-    cwd="$(tmux show-options -qv -t "$session" @opencode_cwd 2>/dev/null)"
-    at="$(tmux show-options -qv -t "$session" @opencode_state_at 2>/dev/null)"
-    reason="$(tmux show-options -qv -t "$session" @opencode_reason 2>/dev/null)"
-    tool="$(tmux show-options -qv -t "$session" @opencode_tool 2>/dev/null)"
-    session_id="$(tmux show-options -qv -t "$session" @opencode_session_id 2>/dev/null)"
+  tmux list-panes -a -F $'#{session_name}\t#{window_id}\t#{window_index}\t#{pane_id}\t#{pane_index}\t#{pane_current_command}\t#{pane_current_path}' 2>/dev/null |
+    while IFS=$'\t' read -r session window window_index pane pane_index command cwd; do
+      state="$(tmux show-options -pqv -t "$pane" @opencode_state 2>/dev/null)"
 
-    detected=""
-    if [ -z "$state" ] || [ -z "$pane" ]; then
-      detected="$(session_has_opencode_pane "$session")"
-    fi
-
-    if [ -z "$state" ] && [ -z "$detected" ]; then
-      continue
-    fi
-
-    [ -z "$state" ] && state="unknown"
-    if [ -z "$pane" ] && [ -n "$detected" ]; then
-      pane="$(printf '%s' "$detected" | cut -f1)"
-    fi
-    if [ -z "$window" ] && [ -n "$detected" ]; then
-      window="$(printf '%s' "$detected" | cut -f2)"
-    fi
-    if [ -z "$cwd" ] && [ -n "$detected" ]; then
-      cwd="$(printf '%s' "$detected" | cut -f3-)"
-    fi
-
-    target="$session"
-    [ -n "$pane" ] && target="$pane"
-
-    rank="$(rank_for_state "$state")"
-    icon="$(icon_for_state "$state")"
-
-    if [ -n "$at" ] && [ "$at" -eq "$at" ] 2>/dev/null; then
-      ago="$(((now - at) / 60))m"
-    else
-      ago='-'
-    fi
-
-    detail="$reason"
-    if [ -n "$tool" ]; then
-      if [ -n "$detail" ]; then
-        detail="$detail/$tool"
-      else
-        detail="$tool"
+      if [ -z "$state" ] && [ "$command" != "opencode" ] && [ "$command" != "open-code" ]; then
+        continue
       fi
-    fi
-    [ -z "$detail" ] && detail='-'
-    if [ "$state" = "unknown" ] && { [ "$detail" = "session" ] || [ "$detail" = "status" ]; }; then
-      detail='-'
-    fi
 
-    status="$icon"
+      [ -z "$state" ] && state="unknown"
+      at="$(tmux show-options -pqv -t "$pane" @opencode_state_at 2>/dev/null)"
+      reason="$(tmux show-options -pqv -t "$pane" @opencode_reason 2>/dev/null)"
+      tool="$(tmux show-options -pqv -t "$pane" @opencode_tool 2>/dev/null)"
 
-    display_cwd="$(short_home_path "$cwd")"
-    [ -z "$display_cwd" ] && display_cwd='-'
+      saved_window="$(tmux show-options -pqv -t "$pane" @opencode_window 2>/dev/null)"
+      saved_cwd="$(tmux show-options -pqv -t "$pane" @opencode_cwd 2>/dev/null)"
+      [ -n "$saved_window" ] && window="$saved_window"
+      [ -n "$saved_cwd" ] && cwd="$saved_cwd"
 
-    line="$(printf '%-24.24s  %s  %5s  %s' "$session" "$status" "$ago" "$display_cwd")"
+      rank="$(rank_for_state "$state")"
+      icon="$(icon_for_state "$state")"
 
-    # rank, session, target, window, raw detail are hidden. Visible line is preformatted.
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "$rank" "$session" "$target" "$window" "$line" "$detail"
-  done | sort -t$'\t' -k1,1n -k5,5n
+      if [ -n "$at" ] && [ "$at" -eq "$at" ] 2>/dev/null; then
+        ago="$(((now - at) / 60))m"
+      else
+        ago='-'
+      fi
+
+      detail="$reason"
+      if [ -n "$tool" ]; then
+        if [ -n "$detail" ]; then
+          detail="$detail/$tool"
+        else
+          detail="$tool"
+        fi
+      fi
+      [ -z "$detail" ] && detail='-'
+      if [ "$state" = "unknown" ] && { [ "$detail" = "session" ] || [ "$detail" = "status" ]; }; then
+        detail='-'
+      fi
+
+      status="$icon"
+
+      display_cwd="$(short_home_path "$cwd")"
+      [ -z "$display_cwd" ] && display_cwd='-'
+
+      label="$session:$window_index.$pane_index"
+      line="$(printf '%-30.30s  %s  %5s  %s' "$label" "$status" "$ago" "$display_cwd")"
+
+      # rank, session, pane, window, raw detail are hidden. Visible line is preformatted.
+      printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$rank" "$session" "$pane" "$window" "$line" "$detail"
+    done | sort -t$'\t' -k1,1n -k5,5
 }
 
 [ "${1:-}" = '--list' ] && {
@@ -118,12 +98,12 @@ if ! command -v fzf >/dev/null 2>&1; then
 fi
 
 self="${BASH_SOURCE[0]}"
-header=$'OpenCode sessions\nenter: jump  ·  ctrl-x: kill session  ·  ctrl-r: refresh'
+header=$'OpenCode panes\nenter: jump  ·  ctrl-x: kill pane  ·  ctrl-r: refresh'
 
 sel=$(emit_rows | fzf --ansi --delimiter='\t' --with-nth=5 \
   --height=100% --reverse --cycle \
   --header="$header" \
-  --bind="ctrl-x:execute-silent(tmux kill-session -t {2})+reload($self --list)" \
+  --bind="ctrl-x:execute-silent(tmux kill-pane -t {3})+reload($self --list)" \
   --bind="ctrl-r:reload($self --list)")
 
 [ -z "$sel" ] && exit 0

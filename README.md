@@ -1,19 +1,19 @@
 # tmux-opencode-session-overview
 
-On-demand tmux popup for answering: which tmux sessions have OpenCode running,
+On-demand tmux popup for answering: which tmux panes have OpenCode running,
 what state are they in, and where should I jump next?
 
-This is intentionally smaller than a persistent sidebar. It uses tmux session
+This is intentionally smaller than a persistent sidebar. It uses tmux pane
 options as the state store and `fzf` as the overlay UI.
 
 ## Features
 
 - `prefix + o` opens an OpenCode overview popup.
-- Lists tmux sessions that have OpenCode status or a detectable OpenCode pane.
+- Lists tmux panes that have OpenCode status or a detectable OpenCode process.
 - Shows `working`, `waiting`, `idle`, or `unknown`.
-- Sorts sessions needing attention first.
-- `enter` jumps to the selected tmux session/pane.
-- `ctrl-x` kills the selected tmux session.
+- Sorts panes needing attention first.
+- `enter` jumps to the selected tmux pane.
+- `ctrl-x` kills the selected tmux pane.
 - `ctrl-r` refreshes the list.
 - Inherits `FZF_DEFAULT_OPTS`, but forces `--height=100%` so fzf fills the tmux popup.
 
@@ -55,7 +55,7 @@ Reload tmux config with `tmux source-file ~/.tmux.conf`.
 ## Install the OpenCode bridge
 
 OpenCode needs a small plugin so it can stamp status onto the current tmux
-session. Symlink it into OpenCode's plugin directory:
+pane. Symlink it into OpenCode's plugin directory:
 
 ```bash
 mkdir -p ~/.config/opencode/plugins
@@ -75,14 +75,14 @@ export TMUX_OPENCODE_OVERVIEW_STATE=$HOME/.tmux/plugins/tmux-opencode-session-ov
 
 | Key | Action |
 | --- | --- |
-| `prefix` + `o` | Open the OpenCode session picker |
+| `prefix` + `o` | Open the OpenCode pane picker |
 
 Inside the picker:
 
 | Key | Action |
 | --- | --- |
-| `enter` | Jump to the selected session/pane |
-| `ctrl-x` | Kill the selected tmux session |
+| `enter` | Jump to the selected pane |
+| `ctrl-x` | Kill the selected tmux pane |
 | `ctrl-r` | Refresh the list |
 | type / arrows | Filter and navigate with fzf |
 
@@ -100,17 +100,17 @@ set -g @opencode_overview_popup_height '75%'
 
 - `opencode_session_overview.tmux` installs the tmux key binding.
 - `scripts/list.sh` opens the popup and runs `scripts/picker.sh`.
-- `scripts/picker.sh` reads tmux session options, formats rows for `fzf`, and jumps or kills sessions based on the selected row.
+- `scripts/picker.sh` reads tmux pane options, formats rows for `fzf`, and jumps to or kills panes based on the selected row.
 - `.opencode/plugins/tmux-opencode-session-overview.js` listens to OpenCode events and runs `scripts/state.sh` in the background.
-- `scripts/state.sh` writes the latest OpenCode state into tmux session options.
+- `scripts/state.sh` writes the latest OpenCode state into tmux pane options.
 
 The plugin does not launch OpenCode. Start OpenCode normally inside tmux; the
-overview will show sessions once the bridge reports state or a pane running
+overview will show panes once the bridge reports state or a pane running
 `opencode` / `open-code` is detected.
 
 ## State Model
 
-The OpenCode bridge writes session-scoped tmux options:
+The OpenCode bridge writes pane-scoped tmux options:
 
 ```text
 @opencode_state       working | waiting | idle | unknown
@@ -125,9 +125,9 @@ The OpenCode bridge writes session-scoped tmux options:
 
 State lives in tmux, not on disk. It survives tmux client disconnects because it
 is attached to the tmux server, and it disappears when the tmux server exits or
-the session is killed.
+the pane is killed.
 
-The picker also includes sessions where a pane's foreground command is
+The picker also includes panes where the foreground command is
 `opencode` or `open-code`, even if the bridge has not reported yet. Those rows
 show as `unknown`.
 
@@ -153,13 +153,10 @@ activity details.
 
 Child OpenCode sessions are tracked so subagent events do not overwrite the root
 session id. Child `permission.asked` and `question.asked` events can still mark
-the parent tmux session as waiting.
+the parent OpenCode pane as waiting.
 
-## Notes
-
-This first version is session-scoped because the target workflow is usually one
-OpenCode instance per tmux session. If you later run multiple OpenCode instances
-inside one tmux session, the state should move to pane-scoped options.
+Because state is pane-scoped, multiple OpenCode instances can run inside one
+tmux session without overwriting each other's status.
 
 ## License
 

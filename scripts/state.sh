@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Record the current OpenCode pane's state on its tmux session.
+# Record the current OpenCode pane's state on the tmux pane.
 # Usage: state.sh <working|waiting|idle|unknown|session> [reason] [session_id] [tool]
 
 set -uo pipefail
@@ -20,38 +20,38 @@ working | waiting | idle | unknown | session) ;;
 *) state="unknown" ;;
 esac
 
-session="$(tmux display-message -p -t "$TMUX_PANE" '#{session_name}' 2>/dev/null)" || exit 0
-[ -z "$session" ] && exit 0
+pane="$(tmux display-message -p -t "$TMUX_PANE" '#{pane_id}' 2>/dev/null)" || exit 0
+[ -z "$pane" ] && exit 0
 
 cwd="$(tmux display-message -p -t "$TMUX_PANE" '#{pane_current_path}' 2>/dev/null)"
 window="$(tmux display-message -p -t "$TMUX_PANE" '#{window_id}' 2>/dev/null)"
 
-tmux set-option -t "$session" @opencode_pane "$TMUX_PANE"
+tmux set-option -p -t "$pane" @opencode_pane "$pane"
 
-[ -n "$cwd" ] && tmux set-option -t "$session" @opencode_cwd "$(sanitize_tmux_value "$cwd")"
-[ -n "$window" ] && tmux set-option -t "$session" @opencode_window "$window"
+[ -n "$cwd" ] && tmux set-option -p -t "$pane" @opencode_cwd "$(sanitize_tmux_value "$cwd")"
+[ -n "$window" ] && tmux set-option -p -t "$pane" @opencode_window "$window"
 
 if [ -n "$session_id" ]; then
-  tmux set-option -t "$session" @opencode_session_id "$session_id"
+  tmux set-option -p -t "$pane" @opencode_session_id "$session_id"
 fi
 
 if [ "$state" = "session" ]; then
   exit 0
 fi
 
-tmux set-option -t "$session" @opencode_state "$state"
-tmux set-option -t "$session" @opencode_state_at "$(date +%s)"
+tmux set-option -p -t "$pane" @opencode_state "$state"
+tmux set-option -p -t "$pane" @opencode_state_at "$(date +%s)"
 
 if [ -n "$reason" ]; then
-  tmux set-option -t "$session" @opencode_reason "$reason"
+  tmux set-option -p -t "$pane" @opencode_reason "$reason"
 else
-  tmux set-option -ut "$session" @opencode_reason 2>/dev/null || true
+  tmux set-option -pu -t "$pane" @opencode_reason 2>/dev/null || true
 fi
 
 if [ -n "$tool" ]; then
-  tmux set-option -t "$session" @opencode_tool "$tool"
+  tmux set-option -p -t "$pane" @opencode_tool "$tool"
 else
-  tmux set-option -ut "$session" @opencode_tool 2>/dev/null || true
+  tmux set-option -pu -t "$pane" @opencode_tool 2>/dev/null || true
 fi
 
 exit 0
