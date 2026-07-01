@@ -94,6 +94,16 @@ Set these before loading the plugin:
 set -g @opencode_overview_key 'o'
 set -g @opencode_overview_popup_width '50%'
 set -g @opencode_overview_popup_height '75%'
+set -g @opencode_overview_columns 'pane,status,age,cwd'
+```
+
+`@opencode_overview_columns` is a comma-separated list. Supported columns are
+`pane`, `status`, `age`, `cwd`, `detail`, `command`, and `pane_id`.
+
+For example, to hide the cwd and show the OpenCode reason/tool detail instead:
+
+```tmux
+set -g @opencode_overview_columns 'pane,status,age,detail'
 ```
 
 ## How it works

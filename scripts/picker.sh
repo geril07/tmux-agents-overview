@@ -29,9 +29,46 @@ icon_for_state() {
   esac
 }
 
+format_display_line() {
+  local columns="${1:-pane,status,age,cwd}"
+  local label="$2" status="$3" ago="$4" display_cwd="$5" detail="$6" command="$7" pane="$8"
+  local line='' column part
+  local selected_columns=()
+
+  columns="${columns// /}"
+  [ -z "$columns" ] && columns='pane,status,age,cwd'
+
+  IFS=',' read -r -a selected_columns <<<"$columns"
+  for column in "${selected_columns[@]}"; do
+    case "$column" in
+    pane | label) part="$(printf '%-30.30s' "$label")" ;;
+    status | state) part="$status" ;;
+    age | ago) part="$(printf '%5s' "$ago")" ;;
+    cwd | path) part="$display_cwd" ;;
+    detail | reason) part="$detail" ;;
+    command | cmd) part="$command" ;;
+    pane_id | pane-id) part="$pane" ;;
+    *) continue ;;
+    esac
+
+    if [ -n "$line" ]; then
+      line="$line  $part"
+    else
+      line="$part"
+    fi
+  done
+
+  if [ -z "$line" ]; then
+    line="$(printf '%-30.30s  %s  %5s  %s' "$label" "$status" "$ago" "$display_cwd")"
+  fi
+
+  printf '%s' "$line"
+}
+
 emit_rows() {
-  local now session window window_index pane pane_index command cwd state at display_cwd rank icon ago reason tool detail status label line saved_window saved_cwd
+  local now columns session window window_index pane pane_index command cwd state at display_cwd rank icon ago reason tool detail status label line saved_window saved_cwd
   now=$(date +%s)
+  columns="$(get_tmux_option @opencode_overview_columns 'pane,status,age,cwd')"
 
   tmux list-panes -a -F $'#{session_name}\t#{window_id}\t#{window_index}\t#{pane_id}\t#{pane_index}\t#{pane_current_command}\t#{pane_current_path}' 2>/dev/null |
     while IFS=$'\t' read -r session window window_index pane pane_index command cwd; do
@@ -79,7 +116,7 @@ emit_rows() {
       [ -z "$display_cwd" ] && display_cwd='-'
 
       label="$session:$window_index.$pane_index"
-      line="$(printf '%-30.30s  %s  %5s  %s' "$label" "$status" "$ago" "$display_cwd")"
+      line="$(format_display_line "$columns" "$label" "$status" "$ago" "$display_cwd" "$detail" "$command" "$pane")"
 
       # rank, session, pane, window, raw detail are hidden. Visible line is preformatted.
       printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
