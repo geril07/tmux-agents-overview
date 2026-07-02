@@ -41,7 +41,7 @@ format_display_line() {
   IFS=',' read -r -a selected_columns <<<"$columns"
   for column in "${selected_columns[@]}"; do
     case "$column" in
-    pane | label) part="$(printf '%-30.30s' "$label")" ;;
+    pane | label) part="$(printf '%-30s' "$label")" ;;
     status | state) part="$status" ;;
     age | ago) part="$(printf '%5s' "$ago")" ;;
     cwd | path) part="$display_cwd" ;;
@@ -59,7 +59,7 @@ format_display_line() {
   done
 
   if [ -z "$line" ]; then
-    line="$(printf '%-30.30s  %s  %5s  %s' "$label" "$status" "$ago" "$display_cwd")"
+    line="$(printf '%-30s  %s  %5s  %s' "$label" "$status" "$ago" "$display_cwd")"
   fi
 
   printf '%s' "$line"
