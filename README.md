@@ -63,9 +63,12 @@ ln -sf ~/.tmux/plugins/tmux-opencode-session-overview/.opencode/plugins/tmux-ope
   ~/.config/opencode/plugins/tmux-opencode-session-overview.js
 ```
 
-The JS plugin resolves the real path of the symlink and finds
-`scripts/state.sh` automatically. If you copy the JS file instead of symlinking
-it, set this environment variable before starting OpenCode:
+The tmux plugin publishes its `scripts/state.sh` path in the tmux option
+`@opencode_overview_state_script`, so the JS plugin can find it even if the JS
+file is copied into OpenCode's plugin directory. Symlinking still works too: the
+JS plugin can also resolve `scripts/state.sh` relative to the symlink target.
+
+For unusual installs, override the state script path before starting OpenCode:
 
 ```bash
 export TMUX_OPENCODE_OVERVIEW_STATE=$HOME/.tmux/plugins/tmux-opencode-session-overview/scripts/state.sh

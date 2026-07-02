@@ -1,14 +1,35 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const childSessions = new Set();
 
+const resolveTmuxStateScript = () => {
+  if (!process.env.TMUX_PANE) return null;
+
+  try {
+    const candidate = execFileSync(
+      "tmux",
+      ["show-option", "-gqv", "@opencode_overview_state_script"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
+
+    if (candidate && existsSync(candidate)) return candidate;
+  } catch {
+    // Fall back to resolving relative to this plugin file below.
+  }
+
+  return null;
+};
+
 const resolveStateScript = () => {
   if (process.env.TMUX_OPENCODE_OVERVIEW_STATE) {
     return process.env.TMUX_OPENCODE_OVERVIEW_STATE;
   }
+
+  const tmuxStateScript = resolveTmuxStateScript();
+  if (tmuxStateScript) return tmuxStateScript;
 
   let dir = dirname(realpathSync(fileURLToPath(import.meta.url)));
   for (let i = 0; i < 6; i += 1) {
