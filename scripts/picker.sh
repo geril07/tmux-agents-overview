@@ -66,7 +66,8 @@ format_display_line() {
 }
 
 emit_rows() {
-  local now columns session window window_index pane pane_index command cwd state at display_cwd rank icon ago reason tool detail status label line saved_window saved_cwd
+  local current_pane="${1:-}"
+  local now columns session window window_index pane pane_index command cwd state at display_cwd rank sort_rank icon ago reason tool detail status label line saved_window saved_cwd
   now=$(date +%s)
   columns="$(get_tmux_option @opencode_overview_columns 'pane,status,age,cwd')"
 
@@ -89,6 +90,8 @@ emit_rows() {
       [ -n "$saved_cwd" ] && cwd="$saved_cwd"
 
       rank="$(rank_for_state "$state")"
+      sort_rank="$rank"
+      [ -n "$current_pane" ] && [ "$pane" = "$current_pane" ] && sort_rank='-1'
       icon="$(icon_for_state "$state")"
 
       if [ -n "$at" ] && [ "$at" -eq "$at" ] 2>/dev/null; then
@@ -120,14 +123,14 @@ emit_rows() {
 
       # rank, session, pane, window, raw detail are hidden. Visible line is preformatted.
       printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$rank" "$session" "$pane" "$window" "$line" "$detail"
+        "$sort_rank" "$session" "$pane" "$window" "$line" "$detail"
     done | sort -t$'\t' -k1,1n -k5,5
 }
 
-[ "${1:-}" = '--list' ] && {
-  emit_rows
+if [ "${1:-}" = '--list' ]; then
+  emit_rows "${2:-}"
   exit 0
-}
+fi
 
 if ! command -v fzf >/dev/null 2>&1; then
   tmux display-message "tmux-opencode-session-overview: fzf is required"
@@ -135,13 +138,14 @@ if ! command -v fzf >/dev/null 2>&1; then
 fi
 
 self="${BASH_SOURCE[0]}"
+current_pane="${1:-}"
 header=$'OpenCode panes\nenter: jump  ·  ctrl-x: kill pane  ·  ctrl-r: refresh'
 
-sel=$(emit_rows | fzf --ansi --delimiter='\t' --with-nth=5 \
+sel=$(emit_rows "$current_pane" | fzf --ansi --delimiter='\t' --with-nth=5 \
   --height=100% --reverse --cycle \
   --header="$header" \
-  --bind="ctrl-x:execute-silent(tmux kill-pane -t {3})+reload($self --list)" \
-  --bind="ctrl-r:reload($self --list)")
+  --bind="ctrl-x:execute-silent(tmux kill-pane -t {3})+reload($self --list '$current_pane')" \
+  --bind="ctrl-r:reload($self --list '$current_pane')")
 
 [ -z "$sel" ] && exit 0
 

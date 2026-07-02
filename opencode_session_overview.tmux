@@ -12,4 +12,4 @@ overview_key="$(get_tmux_option @opencode_overview_key 'o')"
 tmux set-option -gq @opencode_overview_state_script "$CURRENT_DIR/scripts/state.sh"
 
 tmux bind-key "$overview_key" \
-  run-shell "$CURRENT_DIR/scripts/list.sh '#{client_name}'"
+  run-shell "$CURRENT_DIR/scripts/list.sh '#{client_name}' '#{pane_id}'"
