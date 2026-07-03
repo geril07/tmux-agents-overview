@@ -86,20 +86,51 @@ const statusToState = (status) => {
   }
 };
 
-export const TmuxOpenCodeSessionOverview = async () => ({
-  event: async ({ event }) => {
-    if (!event?.type) return;
+export const TmuxOpenCodeSessionOverview = async () => {
+  report("idle", "done");
+  return {
+    event: async ({ event }) => {
+      if (!event?.type) return;
 
-    const props = event.properties ?? {};
-    const sessionID = sessionIDFromProperties(props);
-    const info = props.info;
+      const props = event.properties ?? {};
+      const sessionID = sessionIDFromProperties(props);
+      const info = props.info;
 
-    if (info?.id && info.parentID) {
-      childSessions.add(info.id);
-    }
+      if (info?.id && info.parentID) {
+        childSessions.add(info.id);
+      }
 
-    if (sessionID && childSessions.has(sessionID)) {
+      if (sessionID && childSessions.has(sessionID)) {
+        switch (event.type) {
+          case "permission.asked":
+            report("waiting", "permission");
+            break;
+          case "question.asked":
+            report("waiting", "question");
+            break;
+          case "permission.replied":
+          case "question.replied":
+          case "question.rejected":
+            report("working", "child");
+            break;
+          default:
+            break;
+        }
+        return;
+      }
+
       switch (event.type) {
+        case "session.created":
+          report("idle", "done");
+          break;
+        case "session.status": {
+          const [state, reason] = statusToState(props.status);
+          report(state, reason);
+          break;
+        }
+        case "session.idle":
+          report("idle", "done");
+          break;
         case "permission.asked":
           report("waiting", "permission");
           break;
@@ -109,46 +140,15 @@ export const TmuxOpenCodeSessionOverview = async () => ({
         case "permission.replied":
         case "question.replied":
         case "question.rejected":
-          report("working", "child");
+        case "session.compacted":
+          report("working", "busy");
+          break;
+        case "session.error":
+          report("unknown", "error");
           break;
         default:
           break;
       }
-      return;
-    }
-
-    switch (event.type) {
-      case "session.created":
-        report("idle", "done");
-        break;
-      case "session.updated":
-        report("session", "");
-        break;
-      case "session.status": {
-        const [state, reason] = statusToState(props.status);
-        report(state, reason);
-        break;
-      }
-      case "session.idle":
-        report("idle", "done");
-        break;
-      case "permission.asked":
-        report("waiting", "permission");
-        break;
-      case "question.asked":
-        report("waiting", "question");
-        break;
-      case "permission.replied":
-      case "question.replied":
-      case "question.rejected":
-      case "session.compacted":
-        report("working", "busy");
-        break;
-      case "session.error":
-        report("unknown", "error");
-        break;
-      default:
-        break;
-    }
-  },
-});
+    },
+  };
+};
