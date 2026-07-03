@@ -128,12 +128,9 @@ The OpenCode bridge writes pane-scoped tmux options:
 ```text
 @opencode_state       working | waiting | idle | unknown
 @opencode_state_at    unix timestamp
-@opencode_session_id  native OpenCode session id, when available
-@opencode_pane        tmux pane id that reported status
 @opencode_window      tmux window id that reported status
 @opencode_cwd         pane cwd
 @opencode_reason      busy | retry | permission | question | done | child | error
-@opencode_tool        reserved for future tool tracking
 ```
 
 State lives in tmux, not on disk. It survives tmux client disconnects because it

@@ -57,11 +57,11 @@ const pickFirstString = (value, keys) => {
 const sessionIDFromProperties = (properties) =>
   pickFirstString(properties, ["sessionID", "sessionId", "session_id"]);
 
-const report = (state, reason = "", sessionID = "", tool = "") => {
+const report = (state, reason = "") => {
   if (!STATE_SCRIPT || !process.env.TMUX_PANE) return;
 
   try {
-    const child = spawn("bash", [STATE_SCRIPT, state, reason, sessionID, tool], {
+    const child = spawn("bash", [STATE_SCRIPT, state, reason], {
       stdio: "ignore",
       detached: true,
     });
@@ -120,30 +120,30 @@ export const TmuxOpenCodeSessionOverview = async () => ({
     switch (event.type) {
       case "session.created":
       case "session.updated":
-        report("session", "", sessionID);
+        report("session", "");
         break;
       case "session.status": {
         const [state, reason] = statusToState(props.status);
-        report(state, reason, sessionID);
+        report(state, reason);
         break;
       }
       case "session.idle":
-        report("idle", "done", sessionID);
+        report("idle", "done");
         break;
       case "permission.asked":
-        report("waiting", "permission", sessionID);
+        report("waiting", "permission");
         break;
       case "question.asked":
-        report("waiting", "question", sessionID);
+        report("waiting", "question");
         break;
       case "permission.replied":
       case "question.replied":
       case "question.rejected":
       case "session.compacted":
-        report("working", "busy", sessionID);
+        report("working", "busy");
         break;
       case "session.error":
-        report("unknown", "error", sessionID);
+        report("unknown", "error");
         break;
       default:
         break;
