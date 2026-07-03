@@ -29,14 +29,6 @@ icon_for_state() {
   esac
 }
 
-count_rows() {
-  awk 'END { print NR + 0 }' "$1"
-}
-
-count_tmux_panes() {
-  tmux list-panes -a -F '#{pane_id}' 2>/dev/null | awk 'END { print NR + 0 }'
-}
-
 abs_diff() {
   local left="$1" right="$2"
   if [ "$left" -ge "$right" ]; then
@@ -189,34 +181,8 @@ resolve_default_pane() {
   [ -n "$best_pane" ] && printf '%s' "$best_pane"
 }
 
-if [ "${1:-}" = '--perf-event' ]; then
-  event="${2:-unknown}"
-  request_ms="${3:-}"
-  shift 3 || true
-  event_ms="$(now_ms)"
-
-  case "$request_ms" in
-  '' | *[!0-9]*) perf_log "event=$(perf_value "$event") $*" ;;
-  *) perf_log "event=$(perf_value "$event") request_to_event_ms=$((event_ms - request_ms)) $*" ;;
-  esac
-  exit 0
-fi
-
 if [ "${1:-}" = '--list' ]; then
-  if perf_trace_enabled; then
-    export OPENCODE_OVERVIEW_PERF=1
-    export OPENCODE_OVERVIEW_PERF_LOG="$(perf_log_path)"
-
-    list_rows_file="$(mktemp -t opencode-overview-list.XXXXXX)" || exit 1
-    list_start_ms="$(now_ms)"
-    emit_rows >"$list_rows_file"
-    list_end_ms="$(now_ms)"
-    perf_log "event=reload_list emit_rows_ms=$((list_end_ms - list_start_ms)) rows=$(count_rows "$list_rows_file") all_panes=$(count_tmux_panes) current_pane=$(perf_value "${2:-}")"
-    cat "$list_rows_file"
-    rm -f "$list_rows_file"
-  else
-    emit_rows
-  fi
+  emit_rows
   exit 0
 fi
 
@@ -230,38 +196,13 @@ current_pane="${1:-}"
 current_session="${2:-}"
 current_window_index="${3:-}"
 current_pane_index="${4:-}"
-request_ms="${5:-}"
-perf_enabled=0
-
-if perf_trace_enabled; then
-  perf_enabled=1
-  export OPENCODE_OVERVIEW_PERF=1
-  export OPENCODE_OVERVIEW_PERF_LOG="$(perf_log_path)"
-
-  picker_start_ms="$(now_ms)"
-  case "$request_ms" in
-  '' | *[!0-9]*) request_ms="$picker_start_ms" ;;
-  esac
-  perf_log "event=picker_start request_ms=$request_ms request_to_picker_start_ms=$((picker_start_ms - request_ms)) current_pane=$(perf_value "$current_pane")"
-fi
 
 rows_file="$(mktemp -t opencode-overview.XXXXXX)" || exit 1
 trap 'rm -f "$rows_file"' EXIT
 
-if [ "$perf_enabled" -eq 1 ]; then
-  emit_start_ms="$(now_ms)"
-fi
 emit_rows >"$rows_file"
-if [ "$perf_enabled" -eq 1 ]; then
-  emit_end_ms="$(now_ms)"
-  position_start_ms="$(now_ms)"
-fi
 default_pane="$(resolve_default_pane "$current_pane" "$rows_file" "$current_session" "$current_window_index" "$current_pane_index")"
 initial_position="$(initial_position_for_pane "$default_pane" "$rows_file")"
-if [ "$perf_enabled" -eq 1 ]; then
-  position_end_ms="$(now_ms)"
-  perf_log "event=picker_ready request_to_picker_ready_ms=$((position_end_ms - request_ms)) emit_rows_ms=$((emit_end_ms - emit_start_ms)) initial_pos_ms=$((position_end_ms - position_start_ms)) rows=$(count_rows "$rows_file") all_panes=$(count_tmux_panes) current_pane=$(perf_value "$current_pane") default_pane=$(perf_value "$default_pane") initial_pos=$(perf_value "$initial_position")"
-fi
 
 header=$'OpenCode panes\nenter: jump  ·  ctrl-x: kill pane  ·  ctrl-r: refresh'
 fzf_args=(
@@ -272,34 +213,13 @@ fzf_args=(
   --bind="ctrl-r:reload($self --list '$current_pane')"
 )
 
-if [ "$perf_enabled" -eq 1 ]; then
-  fzf_args+=(--bind="start:execute-silent($self --perf-event fzf_start '$request_ms' current_pane=$(perf_value "$current_pane"))")
-fi
-
 if [ -n "$initial_position" ]; then
-  if [ "$perf_enabled" -eq 1 ]; then
-    fzf_args+=(--bind="load:pos($initial_position)+execute-silent($self --perf-event fzf_load '$request_ms' current_pane=$(perf_value "$current_pane") default_pane=$(perf_value "$default_pane") initial_pos=$(perf_value "$initial_position"))")
-  else
-    fzf_args+=(--bind="load:pos($initial_position)")
-  fi
-else
-  if [ "$perf_enabled" -eq 1 ]; then
-    fzf_args+=(--bind="load:execute-silent($self --perf-event fzf_load '$request_ms' current_pane=$(perf_value "$current_pane") default_pane= initial_pos=)")
-  fi
+  fzf_args+=(--bind="load:pos($initial_position)")
 fi
 
-if [ "$perf_enabled" -eq 1 ]; then
-  fzf_start_ms="$(now_ms)"
-fi
 sel=$(fzf "${fzf_args[@]}" <"$rows_file")
-if [ "$perf_enabled" -eq 1 ]; then
-  fzf_end_ms="$(now_ms)"
-fi
 
 if [ -z "$sel" ]; then
-  if [ "$perf_enabled" -eq 1 ]; then
-    perf_log "event=picker_cancel request_to_done_ms=$((fzf_end_ms - request_ms)) total_ms=$((fzf_end_ms - picker_start_ms)) fzf_ms=$((fzf_end_ms - fzf_start_ms))"
-  fi
   exit 0
 fi
 
@@ -307,9 +227,6 @@ target_session="$(printf '%s' "$sel" | cut -f2)"
 target_pane="$(printf '%s' "$sel" | cut -f3)"
 target_window="$(printf '%s' "$sel" | cut -f4)"
 parent="$(tmux show-options -gqv @opencode_overview_parent 2>/dev/null)"
-if [ "$perf_enabled" -eq 1 ]; then
-  perf_log "event=picker_select request_to_done_ms=$((fzf_end_ms - request_ms)) total_ms=$((fzf_end_ms - picker_start_ms)) fzf_ms=$((fzf_end_ms - fzf_start_ms)) selected_pane=$(perf_value "$target_pane") selected_session=$(perf_value "$target_session")"
-fi
 
 case "$target_pane" in
 %*) tmux select-pane -t "$target_pane" 2>/dev/null || true ;;
