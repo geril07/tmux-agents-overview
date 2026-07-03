@@ -147,19 +147,17 @@ emit_rows() {
       if [ -n "$at" ] && [ "$at" -eq "$at" ] 2>/dev/null; then
         ago="$(((now - at) / 60))m"
       else
-        ago='-'
+        ago=''
       fi
 
       detail="$reason"
-      [ -z "$detail" ] && detail='-'
       if [ "$state" = "unknown" ] && { [ "$detail" = "session" ] || [ "$detail" = "status" ]; }; then
-        detail='-'
+        detail=''
       fi
 
       status="$icon"
 
       display_cwd="$(short_home_path "$cwd")"
-      [ -z "$display_cwd" ] && display_cwd='-'
 
       label="$session:$window_index.$pane_index"
       line="$(format_display_line "$columns" "$label" "$status" "$ago" "$display_cwd" "$detail" "$command" "$pane" "$agent")"
