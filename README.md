@@ -121,7 +121,7 @@ Perf logs are append-only lines written to `@opencode_overview_perf_log`, for
 example:
 
 ```text
-2026-07-03T15:45:25Z ts_ms=1783093525243 event=picker_ready emit_rows_ms=137 initial_pos_ms=17 rows=5 all_panes=18 current_pane=%16 default_pane=%10 initial_pos=4
+2026-07-03T16:03:26Z ts_ms=1783094606907 event=fzf_load request_to_event_ms=347 current_pane=%16 default_pane=%10 initial_pos=4
 ```
 
 Useful events:
@@ -138,6 +138,10 @@ Useful events:
 `emit_rows_ms` measures tmux pane scanning and state lookup time. Compare
 neighboring `ts_ms` values to find delays outside that scan, such as tmux popup
 startup or fzf input loading.
+
+For request-to-visible latency, use `event=fzf_load request_to_event_ms=...`.
+This measures from the tmux key binding's shell command starting to fzf loading
+the rows. The exact terminal paint time is not observable from the script.
 
 ## How it works
 

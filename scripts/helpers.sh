@@ -33,6 +33,13 @@ now_ms() {
 }
 
 perf_trace_enabled() {
+  if [ -n "${OPENCODE_OVERVIEW_PERF:-}" ]; then
+    case "$OPENCODE_OVERVIEW_PERF" in
+    1 | on | true | yes) return 0 ;;
+    *) return 1 ;;
+    esac
+  fi
+
   case "$(get_tmux_option @opencode_overview_perf 'off')" in
   1 | on | true | yes) return 0 ;;
   *) return 1 ;;
@@ -41,7 +48,8 @@ perf_trace_enabled() {
 
 perf_log_path() {
   local path
-  path="$(get_tmux_option @opencode_overview_perf_log "${XDG_CACHE_HOME:-$HOME/.cache}/tmux-opencode-session-overview/perf.log")"
+  path="${OPENCODE_OVERVIEW_PERF_LOG:-}"
+  [ -z "$path" ] && path="$(get_tmux_option @opencode_overview_perf_log "${XDG_CACHE_HOME:-$HOME/.cache}/tmux-opencode-session-overview/perf.log")"
 
   case "$path" in
   '~') printf '%s' "$HOME" ;;

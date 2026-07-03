@@ -87,21 +87,13 @@ emit_rows() {
   now=$(date +%s)
   columns="$(get_tmux_option @opencode_overview_columns 'pane,status,age,cwd')"
 
-  tmux list-panes -a -F $'#{session_name}\t#{window_id}\t#{window_index}\t#{pane_id}\t#{pane_index}\t#{pane_current_command}\t#{pane_current_path}' 2>/dev/null |
-    while IFS=$'\t' read -r session window window_index pane pane_index command cwd; do
-      state="$(tmux show-options -pqv -t "$pane" @opencode_state 2>/dev/null)"
-
+  tmux list-panes -a -F $'#{session_name}\t#{window_id}\t#{window_index}\t#{pane_id}\t#{pane_index}\t#{pane_current_command}\t#{pane_current_path}\t#{@opencode_state}\t#{@opencode_state_at}\t#{@opencode_reason}\t#{@opencode_tool}\t#{@opencode_window}\t#{@opencode_cwd}' 2>/dev/null |
+    while IFS=$'\t' read -r session window window_index pane pane_index command cwd state at reason tool saved_window saved_cwd; do
       if [ -z "$state" ] && [ "$command" != "opencode" ] && [ "$command" != "open-code" ]; then
         continue
       fi
 
       [ -z "$state" ] && state="unknown"
-      at="$(tmux show-options -pqv -t "$pane" @opencode_state_at 2>/dev/null)"
-      reason="$(tmux show-options -pqv -t "$pane" @opencode_reason 2>/dev/null)"
-      tool="$(tmux show-options -pqv -t "$pane" @opencode_tool 2>/dev/null)"
-
-      saved_window="$(tmux show-options -pqv -t "$pane" @opencode_window 2>/dev/null)"
-      saved_cwd="$(tmux show-options -pqv -t "$pane" @opencode_cwd 2>/dev/null)"
       [ -n "$saved_window" ] && window="$saved_window"
       [ -n "$saved_cwd" ] && cwd="$saved_cwd"
 
@@ -135,9 +127,9 @@ emit_rows() {
       label="$session:$window_index.$pane_index"
       line="$(format_display_line "$columns" "$label" "$status" "$ago" "$display_cwd" "$detail" "$command" "$pane")"
 
-      # rank, session, pane, window, raw detail are hidden. Visible line is preformatted.
-      printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$rank" "$session" "$pane" "$window" "$line" "$detail"
+      # rank, session, pane, window, raw detail, and indexes are hidden. Visible line is preformatted.
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$rank" "$session" "$pane" "$window" "$line" "$detail" "$window_index" "$pane_index"
     done | sort -t$'\t' -k1,1n -k5,5
 }
 
@@ -156,8 +148,11 @@ initial_position_for_pane() {
 resolve_default_pane() {
   local current_pane="${1:-}"
   local rows_file="${2:-}"
-  local current_meta current_session current_window_index current_pane_index
-  local rank session pane window line detail candidate_meta candidate_window_index candidate_pane_index
+  local current_session="${3:-}"
+  local current_window_index="${4:-}"
+  local current_pane_index="${5:-}"
+  local current_meta
+  local rank session pane window line detail candidate_window_index candidate_pane_index
   local window_distance pane_distance score best_score best_pane
 
   best_score=''
@@ -171,15 +166,14 @@ resolve_default_pane() {
     return 0
   fi
 
-  current_meta="$(tmux display-message -p -t "$current_pane" $'#{session_name}\t#{window_index}\t#{pane_index}' 2>/dev/null)" || return 0
-  IFS=$'\t' read -r current_session current_window_index current_pane_index <<<"$current_meta"
+  if [ -z "$current_session" ] || [ -z "$current_window_index" ] || [ -z "$current_pane_index" ]; then
+    current_meta="$(tmux display-message -p -t "$current_pane" $'#{session_name}\t#{window_index}\t#{pane_index}' 2>/dev/null)" || return 0
+    IFS=$'\t' read -r current_session current_window_index current_pane_index <<<"$current_meta"
+  fi
   [ -z "$current_session" ] && return 0
 
-  while IFS=$'\t' read -r rank session pane window line detail; do
+  while IFS=$'\t' read -r rank session pane window line detail candidate_window_index candidate_pane_index; do
     [ "$session" = "$current_session" ] || continue
-
-    candidate_meta="$(tmux display-message -p -t "$pane" $'#{window_index}\t#{pane_index}' 2>/dev/null)" || continue
-    IFS=$'\t' read -r candidate_window_index candidate_pane_index <<<"$candidate_meta"
     [ -n "$candidate_window_index" ] && [ -n "$candidate_pane_index" ] || continue
 
     window_distance="$(abs_diff "$candidate_window_index" "$current_window_index")"
@@ -197,13 +191,22 @@ resolve_default_pane() {
 
 if [ "${1:-}" = '--perf-event' ]; then
   event="${2:-unknown}"
-  shift 2 || true
-  perf_log "event=$(perf_value "$event") $*"
+  request_ms="${3:-}"
+  shift 3 || true
+  event_ms="$(now_ms)"
+
+  case "$request_ms" in
+  '' | *[!0-9]*) perf_log "event=$(perf_value "$event") $*" ;;
+  *) perf_log "event=$(perf_value "$event") request_to_event_ms=$((event_ms - request_ms)) $*" ;;
+  esac
   exit 0
 fi
 
 if [ "${1:-}" = '--list' ]; then
   if perf_trace_enabled; then
+    export OPENCODE_OVERVIEW_PERF=1
+    export OPENCODE_OVERVIEW_PERF_LOG="$(perf_log_path)"
+
     list_rows_file="$(mktemp -t opencode-overview-list.XXXXXX)" || exit 1
     list_start_ms="$(now_ms)"
     emit_rows >"$list_rows_file"
@@ -224,41 +227,79 @@ fi
 
 self="${BASH_SOURCE[0]}"
 current_pane="${1:-}"
-picker_start_ms="$(now_ms)"
-perf_log "event=picker_start current_pane=$(perf_value "$current_pane")"
+current_session="${2:-}"
+current_window_index="${3:-}"
+current_pane_index="${4:-}"
+request_ms="${5:-}"
+perf_enabled=0
+
+if perf_trace_enabled; then
+  perf_enabled=1
+  export OPENCODE_OVERVIEW_PERF=1
+  export OPENCODE_OVERVIEW_PERF_LOG="$(perf_log_path)"
+
+  picker_start_ms="$(now_ms)"
+  case "$request_ms" in
+  '' | *[!0-9]*) request_ms="$picker_start_ms" ;;
+  esac
+  perf_log "event=picker_start request_ms=$request_ms request_to_picker_start_ms=$((picker_start_ms - request_ms)) current_pane=$(perf_value "$current_pane")"
+fi
+
 rows_file="$(mktemp -t opencode-overview.XXXXXX)" || exit 1
 trap 'rm -f "$rows_file"' EXIT
 
-emit_start_ms="$(now_ms)"
+if [ "$perf_enabled" -eq 1 ]; then
+  emit_start_ms="$(now_ms)"
+fi
 emit_rows >"$rows_file"
-emit_end_ms="$(now_ms)"
-position_start_ms="$(now_ms)"
-default_pane="$(resolve_default_pane "$current_pane" "$rows_file")"
+if [ "$perf_enabled" -eq 1 ]; then
+  emit_end_ms="$(now_ms)"
+  position_start_ms="$(now_ms)"
+fi
+default_pane="$(resolve_default_pane "$current_pane" "$rows_file" "$current_session" "$current_window_index" "$current_pane_index")"
 initial_position="$(initial_position_for_pane "$default_pane" "$rows_file")"
-position_end_ms="$(now_ms)"
-perf_log "event=picker_ready emit_rows_ms=$((emit_end_ms - emit_start_ms)) initial_pos_ms=$((position_end_ms - position_start_ms)) rows=$(count_rows "$rows_file") all_panes=$(count_tmux_panes) current_pane=$(perf_value "$current_pane") default_pane=$(perf_value "$default_pane") initial_pos=$(perf_value "$initial_position")"
+if [ "$perf_enabled" -eq 1 ]; then
+  position_end_ms="$(now_ms)"
+  perf_log "event=picker_ready request_to_picker_ready_ms=$((position_end_ms - request_ms)) emit_rows_ms=$((emit_end_ms - emit_start_ms)) initial_pos_ms=$((position_end_ms - position_start_ms)) rows=$(count_rows "$rows_file") all_panes=$(count_tmux_panes) current_pane=$(perf_value "$current_pane") default_pane=$(perf_value "$default_pane") initial_pos=$(perf_value "$initial_position")"
+fi
+
 header=$'OpenCode panes\nenter: jump  ·  ctrl-x: kill pane  ·  ctrl-r: refresh'
 fzf_args=(
   --ansi --delimiter=$'\t' --with-nth=5
   --height=100% --reverse --cycle
   --header="$header"
-  --bind="start:execute-silent($self --perf-event fzf_start current_pane=$(perf_value "$current_pane"))"
   --bind="ctrl-x:execute-silent(tmux kill-pane -t {3})+reload($self --list '$current_pane')"
   --bind="ctrl-r:reload($self --list '$current_pane')"
 )
 
-if [ -n "$initial_position" ]; then
-  fzf_args+=(--bind="load:pos($initial_position)+execute-silent($self --perf-event fzf_load current_pane=$(perf_value "$current_pane") default_pane=$(perf_value "$default_pane") initial_pos=$(perf_value "$initial_position"))")
-else
-  fzf_args+=(--bind="load:execute-silent($self --perf-event fzf_load current_pane=$(perf_value "$current_pane") default_pane= initial_pos=)")
+if [ "$perf_enabled" -eq 1 ]; then
+  fzf_args+=(--bind="start:execute-silent($self --perf-event fzf_start '$request_ms' current_pane=$(perf_value "$current_pane"))")
 fi
 
-fzf_start_ms="$(now_ms)"
+if [ -n "$initial_position" ]; then
+  if [ "$perf_enabled" -eq 1 ]; then
+    fzf_args+=(--bind="load:pos($initial_position)+execute-silent($self --perf-event fzf_load '$request_ms' current_pane=$(perf_value "$current_pane") default_pane=$(perf_value "$default_pane") initial_pos=$(perf_value "$initial_position"))")
+  else
+    fzf_args+=(--bind="load:pos($initial_position)")
+  fi
+else
+  if [ "$perf_enabled" -eq 1 ]; then
+    fzf_args+=(--bind="load:execute-silent($self --perf-event fzf_load '$request_ms' current_pane=$(perf_value "$current_pane") default_pane= initial_pos=)")
+  fi
+fi
+
+if [ "$perf_enabled" -eq 1 ]; then
+  fzf_start_ms="$(now_ms)"
+fi
 sel=$(fzf "${fzf_args[@]}" <"$rows_file")
-fzf_end_ms="$(now_ms)"
+if [ "$perf_enabled" -eq 1 ]; then
+  fzf_end_ms="$(now_ms)"
+fi
 
 if [ -z "$sel" ]; then
-  perf_log "event=picker_cancel total_ms=$((fzf_end_ms - picker_start_ms)) fzf_ms=$((fzf_end_ms - fzf_start_ms))"
+  if [ "$perf_enabled" -eq 1 ]; then
+    perf_log "event=picker_cancel request_to_done_ms=$((fzf_end_ms - request_ms)) total_ms=$((fzf_end_ms - picker_start_ms)) fzf_ms=$((fzf_end_ms - fzf_start_ms))"
+  fi
   exit 0
 fi
 
@@ -266,7 +307,9 @@ target_session="$(printf '%s' "$sel" | cut -f2)"
 target_pane="$(printf '%s' "$sel" | cut -f3)"
 target_window="$(printf '%s' "$sel" | cut -f4)"
 parent="$(tmux show-options -gqv @opencode_overview_parent 2>/dev/null)"
-perf_log "event=picker_select total_ms=$((fzf_end_ms - picker_start_ms)) fzf_ms=$((fzf_end_ms - fzf_start_ms)) selected_pane=$(perf_value "$target_pane") selected_session=$(perf_value "$target_session")"
+if [ "$perf_enabled" -eq 1 ]; then
+  perf_log "event=picker_select request_to_done_ms=$((fzf_end_ms - request_ms)) total_ms=$((fzf_end_ms - picker_start_ms)) fzf_ms=$((fzf_end_ms - fzf_start_ms)) selected_pane=$(perf_value "$target_pane") selected_session=$(perf_value "$target_session")"
+fi
 
 case "$target_pane" in
 %*) tmux select-pane -t "$target_pane" 2>/dev/null || true ;;
