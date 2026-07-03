@@ -119,6 +119,8 @@ export const TmuxOpenCodeSessionOverview = async () => ({
 
     switch (event.type) {
       case "session.created":
+        report("idle", "done");
+        break;
       case "session.updated":
         report("session", "");
         break;

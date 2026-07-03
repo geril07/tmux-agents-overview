@@ -160,6 +160,7 @@ show as `unknown`.
 ## Event Mapping
 
 ```text
+session.created        -> idle / done
 session.status busy    -> working / busy
 session.status retry   -> working / retry
 session.status idle    -> idle / done
