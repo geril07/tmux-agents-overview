@@ -1,17 +1,22 @@
-# tmux-opencode-session-overview
+# tmux-agents-overview
 
-On-demand tmux popup for answering: which tmux panes have OpenCode running,
-what state are they in, and where should I jump next?
+On-demand tmux popup for answering: which tmux panes have a coding-agent CLI
+running, what state are they in, and where should I jump next?
+
+Supports **OpenCode**, **Claude Code**, and **Codex CLI** out of the box. Add
+another agent by dropping a single `scripts/adapters/<id>.sh` (or `.js` for
+in-process plugin systems) and a row in `scripts/helpers.sh` — nothing else
+needs to change.
 
 This is intentionally smaller than a persistent sidebar. It uses tmux pane
 options as the state store and `fzf` as the overlay UI.
 
 ## Features
 
-- `prefix + o` opens an OpenCode overview popup.
-- Lists tmux panes that have OpenCode status or a detectable OpenCode process.
-- Shows `working`, `waiting`, `idle`, or `unknown`.
-- Sorts panes needing attention first.
+- `prefix + o` opens the agent-pane picker.
+- Lists tmux panes whose foreground command is `opencode` / `open-code`,
+  `codex`, or `claude` — across all sessions and windows.
+- Shows `working`, `waiting`, `idle`, or `unknown` for each.
 - `enter` jumps to the selected tmux pane.
 - `ctrl-x` kills the selected tmux pane.
 - `ctrl-r` refreshes the list.
@@ -21,8 +26,15 @@ options as the state store and `fzf` as the overlay UI.
 
 - tmux >= 3.2 for `display-popup`
 - [fzf](https://github.com/junegunn/fzf)
-- [OpenCode](https://opencode.ai/)
+- One of:
+  - [OpenCode](https://opencode.ai/) (auto-installed bridge)
+  - [Claude Code](https://claude.com/claude-code) (`claude` CLI, manual settings.json merge)
+  - [Codex CLI](https://github.com/openai/codex) (`codex` CLI, manual config.toml merge)
 - bash
+
+The picker works for any of the three agents even without the optional hook
+setup — those panes just show as `unknown`. Hooks add the colors and the
+"needs attention" classification.
 
 ## Install
 
@@ -31,71 +43,96 @@ options as the state store and `fzf` as the overlay UI.
 After publishing this repository, add it to your tmux config:
 
 ```tmux
-set -g @plugin 'geril07/tmux-opencode-session-overview'
+set -g @plugin 'geril07/tmux-agents-overview'
 ```
 
-Then press `prefix` + <kbd>I</kbd> to install. That's it — the OpenCode
-bridge is symlinked into `~/.config/opencode/plugins/` automatically
-when the plugin loads (skipped silently if you don't use OpenCode).
+Then press `prefix` + <kbd>I</kbd> to install.
+
+On first load the plugin will:
+
+- Symlink `scripts/adapters/opencode.js` into `~/.config/opencode/plugins/`
+  (skipped silently if OpenCode isn't installed).
+- Write `scripts/snippets/claude-settings.json` and
+  `scripts/snippets/codex-config.toml` and tell you to merge them into
+  `~/.claude/settings.json` and `~/.codex/config.toml` respectively.
 
 ### Manual
 
-Clone the repository:
+Clone the repository to the **canonical install path**:
 
 ```sh
-git clone https://github.com/geril07/tmux-opencode-session-overview ~/.tmux/plugins/tmux-opencode-session-overview
+git clone https://github.com/geril07/tmux-agents-overview ~/.tmux/plugins/tmux-agents-overview
 ```
+
+The canonical path `~/.tmux/plugins/tmux-agents-overview` is used in the
+generated Claude/Codex snippets and in the OpenCode plugin symlink, so the
+files you paste into `~/.claude/settings.json` and `~/.codex/config.toml`
+work without rewriting any paths.
+
+If you cloned somewhere else (e.g. `~/code/my/tmux-agents-overview`),
+the entry script will auto-create a symlink from the canonical path to
+your checkout on first load — snippets and the OpenCode bridge will then
+work without any further action. Set `TMUX_AGENTS_OVERVIEW_NO_SYMLINK=1`
+in the environment before sourcing the entry script to opt out of the
+auto-symlink.
 
 Add this to your tmux config:
 
 ```tmux
-run-shell ~/.tmux/plugins/tmux-opencode-session-overview/opencode_session_overview.tmux
+run-shell ~/.tmux/plugins/tmux-agents-overview/agents_overview.tmux
 ```
 
 Reload tmux config with `tmux source-file ~/.tmux.conf`.
 
-## Bridge install (optional)
+## Per-agent setup
 
-The bridge is a small OpenCode plugin that stamps status onto the current tmux
-pane. Without it the picker still works — panes running `opencode` or
-`open-code` are listed as `unknown`. With it, you get the `working` /
-`waiting` / `idle` colors and the "needs attention" sort.
+The picker works for any of the three supported agents without further setup.
+The colored state, however, requires the agent to stamp its status onto the
+tmux pane. How that happens is different per agent:
 
-When the tmux plugin loads, it symlinks the bridge into
-`~/.config/opencode/plugins/` automatically. The auto-install only runs if
-`~/.config/opencode` already exists (so it never creates state on machines
-where OpenCode isn't installed) and is idempotent.
+### OpenCode (auto)
 
-To opt out, set this before loading the plugin:
+The JS plugin in `scripts/adapters/opencode.js` is symlinked into
+`~/.config/opencode/plugins/` when the plugin loads, if `~/.config/opencode`
+exists. The auto-install is idempotent and skipped on machines without
+OpenCode. Opt out with:
 
 ```tmux
-set -g @opencode_overview_install_bridge 'off'
+set -g @agents_overview_install_opencode 'off'
 ```
 
-To install it manually instead:
+### Claude Code (one-time manual merge)
 
-```bash
-mkdir -p ~/.config/opencode/plugins
-ln -sf ~/.tmux/plugins/tmux-opencode-session-overview/.opencode/plugins/tmux-opencode-session-overview.js \
-  ~/.config/opencode/plugins/tmux-opencode-session-overview.js
+The plugin writes a settings fragment to
+`scripts/snippets/claude-settings.json` on every load (when `~/.claude`
+exists). Merge it into your existing `~/.claude/settings.json` so that
+the plugin's `hooks` block is added under your existing top-level keys.
+To opt out of the snippet being (re)written:
+
+```tmux
+set -g @agents_overview_install_claude_hint 'off'
 ```
 
-The tmux plugin publishes its `scripts/state.sh` path in the tmux option
-`@opencode_overview_state_script`, so the JS plugin can find it even if the JS
-file is copied (not symlinked) into OpenCode's plugin directory. The JS plugin
-can also resolve `scripts/state.sh` relative to the symlink target.
+The hook commands inside the snippet call `scripts/state.sh claude <state>
+<reason>` directly — no extra wrapper, no extra process.
 
-For unusual installs, override the state script path before starting OpenCode:
+### Codex CLI (one-time manual merge)
 
-```bash
-export TMUX_OPENCODE_OVERVIEW_STATE=$HOME/.tmux/plugins/tmux-opencode-session-overview/scripts/state.sh
+The plugin writes a `[hooks]` table fragment to
+`scripts/snippets/codex-config.toml` on every load (when `~/.codex`
+exists). Append it to your `~/.codex/config.toml`. To opt out:
+
+```tmux
+set -g @agents_overview_install_codex_hint 'off'
 ```
+
+The Codex hook commands call `scripts/state.sh codex <state> <reason>`.
 
 ## Usage
 
 | Key | Action |
 | --- | --- |
-| `prefix` + `o` | Open the OpenCode pane picker |
+| `prefix` + `o` | Open the agent-pane picker |
 
 Inside the picker:
 
@@ -111,53 +148,75 @@ Inside the picker:
 Set these before loading the plugin:
 
 ```tmux
-set -g @opencode_overview_key 'o'
-set -g @opencode_overview_popup_width '50%'
-set -g @opencode_overview_popup_height '75%'
-set -g @opencode_overview_columns 'pane,status,age,cwd'
-set -g @opencode_overview_install_bridge 'on'
+set -g @agents_overview_key             'o'
+set -g @agents_overview_popup_width     '50%'
+set -g @agents_overview_popup_height    '75%'
+set -g @agents_overview_columns         'pane,status,age,cwd'
+set -g @agents_overview_install_opencode    'on'
+set -g @agents_overview_install_claude_hint 'on'
+set -g @agents_overview_install_codex_hint  'on'
 ```
 
-`@opencode_overview_columns` is a comma-separated list. Supported columns are
-`pane`, `status`, `age`, `cwd`, `detail`, `command`, and `pane_id`.
+`@agents_overview_columns` is a comma-separated list. Supported columns are
+`pane`, `status`, `age`, `cwd`, `detail`, `command`, `agent`, and `pane_id`.
 
-For example, to hide the cwd and show the OpenCode reason/tool detail instead:
+For example, to show which agent is running instead of the cwd:
 
 ```tmux
-set -g @opencode_overview_columns 'pane,status,age,detail'
+set -g @agents_overview_columns 'pane,status,age,agent'
 ```
 
 ## How it works
 
-- `opencode_session_overview.tmux` installs the tmux key binding and, if `~/.config/opencode` exists, symlinks the OpenCode bridge into `~/.config/opencode/plugins/`.
+- `agents_overview.tmux` ensures `~/.tmux/plugins/tmux-agents-overview`
+  points at the install (auto-symlink if missing), binds the key, publishes
+  the `state.sh` path so the OpenCode plugin can find it, symlinks the
+  OpenCode plugin if OpenCode is installed, and writes the Claude/Codex
+  snippet files if their config dirs exist.
 - `scripts/list.sh` opens the popup and runs `scripts/picker.sh`.
-- `scripts/picker.sh` reads tmux pane options, formats rows for `fzf`, and jumps to or kills panes based on the selected row.
-- `.opencode/plugins/tmux-opencode-session-overview.js` listens to OpenCode events and runs `scripts/state.sh` in the background.
-- `scripts/state.sh` writes the latest OpenCode state into tmux pane options.
+- `scripts/picker.sh` reads tmux pane options in a single `list-panes -a`
+  call, formats rows for `fzf`, and jumps to or kills panes based on the
+  selected row.
+- Each agent's adapter turns that agent's events into `state.sh` calls:
+  - **OpenCode**: a JS plugin (`scripts/adapters/opencode.js`) listens to
+    OpenCode's `event` callback and spawns `state.sh opencode <state> [reason]`.
+  - **Claude Code**: a `hooks` block in `~/.claude/settings.json` (generated
+    from the table in `scripts/adapters/claude.sh`) runs `state.sh claude
+    <state> [reason]` per event.
+  - **Codex CLI**: a `[hooks]` table in `~/.codex/config.toml` (generated
+    from the table in `scripts/adapters/codex.sh`) runs `state.sh codex
+    <state> [reason]` per event.
+- `scripts/state.sh` writes the latest state into the tmux pane options
+  `@agent_<id>_state` / `_state_at` / `_reason`.
 
-The plugin does not launch OpenCode. Start OpenCode normally inside tmux; the
-overview will show panes once the bridge reports state or a pane running
-`opencode` / `open-code` is detected.
+The plugin does not launch any of the agents. Start them normally inside
+tmux; the overview shows their panes as soon as the bridge reports state
+or a pane running one of the three CLIs is detected.
 
 ## State Model
 
-The OpenCode bridge writes pane-scoped tmux options:
+Each agent's adapter writes pane-scoped tmux options under a per-agent
+prefix:
 
 ```text
-@opencode_state       working | waiting | idle | unknown
-@opencode_state_at    unix timestamp
-@opencode_reason      busy | retry | permission | question | done | child | error
+@agent_<id>_state     working | waiting | idle | unknown
+@agent_<id>_state_at  unix timestamp
+@agent_<id>_reason    busy | retry | permission | question | done | child | error
 ```
 
-State lives in tmux, not on disk. It survives tmux client disconnects because it
-is attached to the tmux server, and it disappears when the tmux server exits or
-the pane is killed.
+`<id>` is one of `opencode`, `codex`, `claude`.
 
-The picker also includes panes where the foreground command is
-`opencode` or `open-code`, even if the bridge has not reported yet. Those rows
-show as `unknown`.
+State lives in tmux, not on disk. It survives tmux client disconnects
+because it is attached to the tmux server, and it disappears when the
+tmux server exits or the pane is killed.
+
+The picker also includes panes whose `pane_current_command` is one of the
+known agent process names, even if no hook has fired yet. Those rows show
+as `unknown`.
 
 ## Event Mapping
+
+OpenCode (`scripts/adapters/opencode.js`):
 
 ```text
 plugin loaded          -> idle / done
@@ -173,19 +232,52 @@ question.replied       -> working / busy
 question.rejected      -> working / busy
 session.compacted      -> working / busy
 session.error          -> unknown / error
-plugin dispose         -> clear all state
+plugin dispose         -> clear
 ```
 
-The bridge intentionally uses only OpenCode's `event` callback. This keeps the
-integration small and avoids tool/prompt hooks until the overlay needs richer
-activity details.
+Claude Code (`scripts/adapters/claude.sh`):
 
-Child OpenCode sessions are tracked so subagent events do not overwrite the root
-session id. Child `permission.asked` and `question.asked` events can still mark
-the parent OpenCode pane as waiting.
+```text
+SessionStart                   -> idle    / done
+UserPromptSubmit               -> working / busy
+Notification:permission_prompt -> waiting / permission
+PreToolUse:AskUserQuestion     -> waiting / question
+Stop                           -> idle    / done
+SessionEnd                     -> clear
+```
 
-Because state is pane-scoped, multiple OpenCode instances can run inside one
-tmux session without overwriting each other's status.
+Codex CLI (`scripts/adapters/codex.sh`):
+
+```text
+SessionStart:startup|resume   -> idle    / done
+UserPromptSubmit              -> working / busy
+PermissionRequest             -> waiting / permission
+Stop                          -> idle    / done
+```
+
+Codex has no native "asking the user a question" event, so the
+`waiting / question` state is left out for Codex panes.
+
+## Adding a new agent
+
+1. Append a row to `AGENT_PROCESS_NAMES` in `scripts/helpers.sh`:
+   ```bash
+   AGENT_PROCESS_NAMES=(
+     "opencode opencode open-code"
+     "codex    codex"
+     "claude   claude"
+     "myagent  myagent-cli"
+   )
+   ```
+2. Drop `scripts/adapters/<id>.sh` (or `.js` for a plugin-runtime system)
+   that defines a registrations table the same way `claude.sh` and
+   `codex.sh` do.
+3. If the agent uses a bash hook, add a `install_<id>_hint` function to
+   `agents_overview.tmux` that calls `write_snippet` and prints a
+   one-liner via `tmux display-message`.
+
+The picker, the install, and the snippet generator all read from the
+registry and the per-adapter table — no other change is required.
 
 ## License
 

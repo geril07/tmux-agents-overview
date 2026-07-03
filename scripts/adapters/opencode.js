@@ -3,6 +3,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+const AGENT_ID = "opencode";
 const childSessions = new Set();
 
 const resolveTmuxStateScript = () => {
@@ -11,7 +12,7 @@ const resolveTmuxStateScript = () => {
   try {
     const candidate = execFileSync(
       "tmux",
-      ["show-option", "-gqv", "@opencode_overview_state_script"],
+      ["show-option", "-gqv", "@agents_overview_state_script"],
       { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
     ).trim();
 
@@ -24,8 +25,8 @@ const resolveTmuxStateScript = () => {
 };
 
 const resolveStateScript = () => {
-  if (process.env.TMUX_OPENCODE_OVERVIEW_STATE) {
-    return process.env.TMUX_OPENCODE_OVERVIEW_STATE;
+  if (process.env.TMUX_AGENTS_OVERVIEW_STATE) {
+    return process.env.TMUX_AGENTS_OVERVIEW_STATE;
   }
 
   const tmuxStateScript = resolveTmuxStateScript();
@@ -33,7 +34,7 @@ const resolveStateScript = () => {
 
   let dir = dirname(realpathSync(fileURLToPath(import.meta.url)));
   for (let i = 0; i < 6; i += 1) {
-    const candidate = resolve(dir, "scripts/state.sh");
+    const candidate = resolve(dir, "../state.sh");
     if (existsSync(candidate)) return candidate;
 
     const parent = dirname(dir);
@@ -61,7 +62,7 @@ const report = (state, reason = "") => {
   if (!STATE_SCRIPT || !process.env.TMUX_PANE) return;
 
   try {
-    const child = spawn("bash", [STATE_SCRIPT, state, reason], {
+    const child = spawn("bash", [STATE_SCRIPT, AGENT_ID, state, reason], {
       stdio: "ignore",
       detached: true,
     });
@@ -86,7 +87,7 @@ const statusToState = (status) => {
   }
 };
 
-export const TmuxOpenCodeSessionOverview = async () => {
+export const TmuxAgentsOverviewOpenCode = async () => {
   report("idle", "done");
   return {
     event: async ({ event }) => {

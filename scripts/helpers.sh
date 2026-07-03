@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Shared helpers for tmux-opencode-session-overview.
+# Shared helpers for tmux-agents-overview.
 
+# get_tmux_option <option-name> <default>
+# Echoes the global tmux option value, or the default when unset/empty.
 get_tmux_option() {
   local value
   value="$(tmux show-option -gqv "$1" 2>/dev/null)"
@@ -11,10 +13,14 @@ get_tmux_option() {
   fi
 }
 
+# sanitize_tmux_value <string>
+# Strips newlines/tabs and truncates so a value can live inside a tmux option.
 sanitize_tmux_value() {
   printf '%s' "${1:-}" | tr '\n\r\t' '   ' | cut -c1-300
 }
 
+# short_home_path <path>
+# Replaces $HOME prefix with ~ for compact display.
 short_home_path() {
   local path="${1:-}"
   if [ -n "$HOME" ]; then
@@ -22,4 +28,80 @@ short_home_path() {
   else
     printf '%s' "$path"
   fi
+}
+
+# -- Agent registry --------------------------------------------------------
+# Single source of truth for which agents are supported, the tmux option
+# prefix they use to stamp state, and the `pane_current_command` values that
+# identify a pane as running that agent.
+#
+# Add a new agent by appending to AGENT_PROCESS_NAMES and dropping a
+# scripts/adapters/<id>.sh (bash) or <id>.js (JS plugin) into place. The
+# picker, the install script, and the snippet generator all read from this
+# table — no other change is required.
+
+AGENT_PROCESS_NAMES=(
+  "opencode opencode open-code"
+  "codex    codex"
+  "claude   claude"
+)
+
+# agent_process_names <agent>
+# Echoes the space-separated `pane_current_command` values for an agent.
+agent_process_names() {
+  local agent="$1" entry id n out=""
+  for entry in "${AGENT_PROCESS_NAMES[@]}"; do
+    id="${entry%% *}"
+    [ "$id" = "$agent" ] || continue
+    for n in ${entry#* }; do
+      [ -n "$out" ] && out="$out $n" || out="$n"
+    done
+  done
+  printf '%s' "$out"
+}
+
+# all_agent_process_names
+# Echoes the unique union of every agent's process names (space-separated).
+all_agent_process_names() {
+  local entry n out="" seen
+  declare -A seen=()
+  for entry in "${AGENT_PROCESS_NAMES[@]}"; do
+    for n in ${entry#* }; do
+      [ -n "${seen[$n]:-}" ] && continue
+      seen["$n"]=1
+      [ -n "$out" ] && out="$out $n" || out="$n"
+    done
+  done
+  printf '%s' "$out"
+}
+
+# registered_agents
+# Echoes the space-separated list of agent ids known to this plugin.
+registered_agents() {
+  local entry id out=""
+  for entry in "${AGENT_PROCESS_NAMES[@]}"; do
+    id="${entry%% *}"
+    [ -n "$out" ] && out="$out $id" || out="$id"
+  done
+  printf '%s' "$out"
+}
+
+# is_known_agent <id>
+# Returns 0 if the agent is in the registry, 1 otherwise.
+is_known_agent() {
+  local agent="$1" entry
+  for entry in "${AGENT_PROCESS_NAMES[@]}"; do
+    [ "${entry%% *}" = "$agent" ] && return 0
+  done
+  return 1
+}
+
+# agent_option <agent> <suffix>
+# Echoes the canonical tmux option name for an agent+state-suffix pair.
+#   agent_option opencode state     -> @agent_opencode_state
+#   agent_option opencode state_at  -> @agent_opencode_state_at
+#   agent_option opencode reason    -> @agent_opencode_reason
+agent_option() {
+  local agent="$1" suffix="$2"
+  printf '@agent_%s_%s' "$agent" "$suffix"
 }

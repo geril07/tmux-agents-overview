@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Interactive picker for tmux panes that contain OpenCode.
+# Interactive picker for tmux panes running a known coding-agent CLI
+# (opencode, codex, or claude).
 #
 #   picker.sh        fzf picker
 #   picker.sh --list print rows only, used by fzf reload bindings
@@ -55,6 +56,7 @@ format_display_line() {
     age | ago) part="$(printf '%5s' "$ago")" ;;
     cwd | path) part="$display_cwd" ;;
     detail | reason) part="$detail" ;;
+    agent) part="$command" ;;
     command | cmd) part="$command" ;;
     pane_id | pane-id) part="$pane" ;;
     *) continue ;;
@@ -74,17 +76,68 @@ format_display_line() {
   printf '%s' "$line"
 }
 
-emit_rows() {
-  local now columns session window window_index pane pane_index command cwd state at display_cwd rank icon ago reason detail status label line
-  now=$(date +%s)
-  columns="$(get_tmux_option @opencode_overview_columns 'pane,status,age,cwd')"
-
-  tmux list-panes -a -F $'#{session_name}\t#{window_id}\t#{window_index}\t#{pane_id}\t#{pane_index}\t#{pane_current_command}\t#{pane_current_path}\t#{@opencode_state}\t#{@opencode_state_at}\t#{@opencode_reason}' 2>/dev/null |
-    tr '\t' '\037' |
-    while IFS=$'\037' read -r session window window_index pane pane_index command cwd state at reason; do
-      if [ "$command" != "opencode" ]; then
-        continue
+# pane_owned_by <command>
+# Echoes the agent id whose process-name list contains the given command,
+# or empty string when no registered agent owns it.
+pane_owned_by() {
+  local command="$1" entry id n
+  for entry in "${AGENT_PROCESS_NAMES[@]}"; do
+    id="${entry%% *}"
+    for n in ${entry#* }; do
+      if [ "$n" = "$command" ]; then
+        printf '%s' "$id"
+        return 0
       fi
+    done
+  done
+  return 1
+}
+
+emit_rows() {
+  local now columns fmt agent
+  local -a agents=()
+  local f
+  now=$(date +%s)
+  columns="$(get_tmux_option @agents_overview_columns 'pane,status,age,cwd')"
+
+  # Snapshot the registry order so per-pane indexing is stable.
+  for entry in "${AGENT_PROCESS_NAMES[@]}"; do
+    agents+=("${entry%% *}")
+  done
+
+  # Build the tmux format string: shared columns, then 3 option columns
+  # per registered agent (state, state_at, reason).
+  fmt=$'#{session_name}\t#{window_id}\t#{window_index}\t#{pane_id}\t#{pane_index}\t#{pane_current_command}\t#{pane_current_path}'
+  for agent in "${agents[@]}"; do
+    fmt+=$(printf '\t#{@agent_%s_state}\t#{@agent_%s_state_at}\t#{@agent_%s_reason}' \
+      "$agent" "$agent" "$agent")
+  done
+
+  tmux list-panes -a -F "$fmt" 2>/dev/null |
+    tr '\t' '\037' |
+    while IFS=$'\037' read -r -a fields; do
+      local session window window_index pane pane_index command cwd
+      local label display_cwd line detail state at reason
+      local icon ago rank status
+      local idx base
+      session="${fields[0]}"
+      window="${fields[1]}"
+      window_index="${fields[2]}"
+      pane="${fields[3]}"
+      pane_index="${fields[4]}"
+      command="${fields[5]}"
+      cwd="${fields[6]}"
+
+      agent="$(pane_owned_by "$command")" || continue
+
+      # Find this agent's index in the registry so we can index into fields[].
+      for idx in "${!agents[@]}"; do
+        [ "${agents[$idx]}" = "$agent" ] && break
+      done
+      base=$((7 + idx * 3))
+      state="${fields[$base]:-}"
+      at="${fields[$((base + 1))]:-}"
+      reason="${fields[$((base + 2))]:-}"
 
       [ -z "$state" ] && state="unknown"
 
@@ -111,7 +164,6 @@ emit_rows() {
       label="$session:$window_index.$pane_index"
       line="$(format_display_line "$columns" "$label" "$status" "$ago" "$display_cwd" "$detail" "$command" "$pane")"
 
-      # rank, session, pane, window, raw detail, and indexes are hidden. Visible line is preformatted.
       printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$rank" "$session" "$pane" "$window" "$line" "$detail" "$window_index" "$pane_index"
     done | sort -t$'\t' -k2,2 -k7,7n -k8,8n | awk -F '\t' 'BEGIN { OFS = "\t"; c = 0 } { c++; $5 = c "  " $5; print }'
@@ -179,7 +231,7 @@ if [ "${1:-}" = '--list' ]; then
 fi
 
 if ! command -v fzf >/dev/null 2>&1; then
-  tmux display-message "tmux-opencode-session-overview: fzf is required"
+  tmux display-message "tmux-agents-overview: fzf is required"
   exit 0
 fi
 
@@ -189,14 +241,14 @@ current_session="${2:-}"
 current_window_index="${3:-}"
 current_pane_index="${4:-}"
 
-rows_file="$(mktemp -t opencode-overview.XXXXXX)" || exit 1
+rows_file="$(mktemp -t agents-overview.XXXXXX)" || exit 1
 trap 'rm -f "$rows_file"' EXIT
 
 emit_rows >"$rows_file"
 default_pane="$(resolve_default_pane "$current_pane" "$rows_file" "$current_session" "$current_window_index" "$current_pane_index")"
 initial_position="$(initial_position_for_pane "$default_pane" "$rows_file")"
 
-header=$'OpenCode panes\nenter: jump  ·  ctrl-x: kill pane  ·  ctrl-r: refresh'
+header=$'Coding-agent panes  ·  enter: jump  ·  ctrl-x: kill pane  ·  ctrl-r: refresh'
 fzf_args=(
   --ansi --delimiter=$'\t' --with-nth=5
   --height=100% --reverse --cycle
@@ -218,7 +270,7 @@ fi
 target_session="$(printf '%s' "$sel" | cut -f2)"
 target_pane="$(printf '%s' "$sel" | cut -f3)"
 target_window="$(printf '%s' "$sel" | cut -f4)"
-parent="$(tmux show-options -gqv @opencode_overview_parent 2>/dev/null)"
+  parent="$(tmux show-options -gqv @agents_overview_parent 2>/dev/null)"
 
 case "$target_pane" in
 %*) tmux select-pane -t "$target_pane" 2>/dev/null || true ;;
