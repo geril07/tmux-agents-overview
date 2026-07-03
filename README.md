@@ -173,6 +173,7 @@ question.replied       -> working / busy
 question.rejected      -> working / busy
 session.compacted      -> working / busy
 session.error          -> unknown / error
+plugin dispose         -> clear all state
 ```
 
 The bridge intentionally uses only OpenCode's `event` callback. This keeps the

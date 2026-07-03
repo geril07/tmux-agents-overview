@@ -14,7 +14,7 @@ state="${1:-unknown}"
 reason="$(sanitize_tmux_value "${2:-}")"
 
 case "$state" in
-working | waiting | idle | unknown | session) ;;
+working | waiting | idle | unknown | session | clear) ;;
 *) state="unknown" ;;
 esac
 
@@ -22,6 +22,13 @@ pane="$(tmux display-message -p -t "$TMUX_PANE" '#{pane_id}' 2>/dev/null)" || ex
   [ -z "$pane" ] && exit 0
 
   if [ "$state" = "session" ]; then
+  exit 0
+fi
+
+if [ "$state" = "clear" ]; then
+  tmux set-option -pu -t "$pane" @opencode_state 2>/dev/null || true
+  tmux set-option -pu -t "$pane" @opencode_state_at 2>/dev/null || true
+  tmux set-option -pu -t "$pane" @opencode_reason 2>/dev/null || true
   exit 0
 fi
 

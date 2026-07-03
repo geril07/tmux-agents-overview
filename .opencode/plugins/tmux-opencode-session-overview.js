@@ -150,5 +150,8 @@ export const TmuxOpenCodeSessionOverview = async () => {
           break;
       }
     },
+    dispose: async () => {
+      report("clear", "");
+    },
   };
 };
