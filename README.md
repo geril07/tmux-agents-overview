@@ -98,6 +98,8 @@ set -g @opencode_overview_key 'o'
 set -g @opencode_overview_popup_width '50%'
 set -g @opencode_overview_popup_height '75%'
 set -g @opencode_overview_columns 'pane,status,age,cwd'
+set -g @opencode_overview_perf 'off'
+set -g @opencode_overview_perf_log '~/.cache/tmux-opencode-session-overview/perf.log'
 ```
 
 `@opencode_overview_columns` is a comma-separated list. Supported columns are
@@ -108,6 +110,34 @@ For example, to hide the cwd and show the OpenCode reason/tool detail instead:
 ```tmux
 set -g @opencode_overview_columns 'pane,status,age,detail'
 ```
+
+Enable perf tracing when the picker feels slow:
+
+```tmux
+set -g @opencode_overview_perf 'on'
+```
+
+Perf logs are append-only lines written to `@opencode_overview_perf_log`, for
+example:
+
+```text
+2026-07-03T15:45:25Z ts_ms=1783093525243 event=picker_ready emit_rows_ms=137 initial_pos_ms=17 rows=5 all_panes=18 current_pane=%16 default_pane=%10 initial_pos=4
+```
+
+Useful events:
+
+- `list_start`: `scripts/list.sh` started after the tmux key binding.
+- `display_popup_start`: `tmux display-popup` is about to run.
+- `picker_start`: `scripts/picker.sh` started inside the popup.
+- `picker_ready`: pane rows and default selection are ready.
+- `fzf_start`: fzf started.
+- `fzf_load`: fzf loaded the input rows.
+- `reload_list`: fzf `ctrl-r` or kill-pane reload regenerated rows.
+- `picker_select` / `picker_cancel`: picker finished.
+
+`emit_rows_ms` measures tmux pane scanning and state lookup time. Compare
+neighboring `ts_ms` values to find delays outside that scan, such as tmux popup
+startup or fzf input loading.
 
 ## How it works
 
