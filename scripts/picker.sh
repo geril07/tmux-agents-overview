@@ -114,7 +114,7 @@ emit_rows() {
       # rank, session, pane, window, raw detail, and indexes are hidden. Visible line is preformatted.
       printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$rank" "$session" "$pane" "$window" "$line" "$detail" "$window_index" "$pane_index"
-    done | sort -t$'\t' -k2,2 -k7,7n -k8,8n
+    done | sort -t$'\t' -k2,2 -k7,7n -k8,8n | awk -F '\t' 'BEGIN { OFS = "\t"; c = 0 } { c++; $5 = c "  " $5; print }'
 }
 
 initial_position_for_pane() {
