@@ -75,20 +75,18 @@ format_display_line() {
 }
 
 emit_rows() {
-  local now columns session window window_index pane pane_index command cwd state at display_cwd rank icon ago reason detail status label line saved_window saved_cwd
+  local now columns session window window_index pane pane_index command cwd state at display_cwd rank icon ago reason detail status label line
   now=$(date +%s)
   columns="$(get_tmux_option @opencode_overview_columns 'pane,status,age,cwd')"
 
-  tmux list-panes -a -F $'#{session_name}\t#{window_id}\t#{window_index}\t#{pane_id}\t#{pane_index}\t#{pane_current_command}\t#{pane_current_path}\t#{@opencode_state}\t#{@opencode_state_at}\t#{@opencode_reason}\t#{@opencode_window}\t#{@opencode_cwd}' 2>/dev/null |
+  tmux list-panes -a -F $'#{session_name}\t#{window_id}\t#{window_index}\t#{pane_id}\t#{pane_index}\t#{pane_current_command}\t#{pane_current_path}\t#{@opencode_state}\t#{@opencode_state_at}\t#{@opencode_reason}' 2>/dev/null |
     tr '\t' '\037' |
-    while IFS=$'\037' read -r session window window_index pane pane_index command cwd state at reason saved_window saved_cwd; do
+    while IFS=$'\037' read -r session window window_index pane pane_index command cwd state at reason; do
       if [ -z "$state" ] && [ "$command" != "opencode" ] && [ "$command" != "open-code" ]; then
         continue
       fi
 
       [ -z "$state" ] && state="unknown"
-      [ -n "$saved_window" ] && window="$saved_window"
-      [ -n "$saved_cwd" ] && cwd="$saved_cwd"
 
       rank="$(rank_for_state "$state")"
       icon="$(icon_for_state "$state")"

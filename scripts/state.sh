@@ -19,15 +19,9 @@ working | waiting | idle | unknown | session) ;;
 esac
 
 pane="$(tmux display-message -p -t "$TMUX_PANE" '#{pane_id}' 2>/dev/null)" || exit 0
-[ -z "$pane" ] && exit 0
+  [ -z "$pane" ] && exit 0
 
-cwd="$(tmux display-message -p -t "$TMUX_PANE" '#{pane_current_path}' 2>/dev/null)"
-window="$(tmux display-message -p -t "$TMUX_PANE" '#{window_id}' 2>/dev/null)"
-
-[ -n "$cwd" ] && tmux set-option -p -t "$pane" @opencode_cwd "$(sanitize_tmux_value "$cwd")"
-[ -n "$window" ] && tmux set-option -p -t "$pane" @opencode_window "$window"
-
-if [ "$state" = "session" ]; then
+  if [ "$state" = "session" ]; then
   exit 0
 fi
 
