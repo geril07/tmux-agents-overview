@@ -34,7 +34,9 @@ After publishing this repository, add it to your tmux config:
 set -g @plugin 'geril07/tmux-opencode-session-overview'
 ```
 
-Then press `prefix` + <kbd>I</kbd> to install.
+Then press `prefix` + <kbd>I</kbd> to install. That's it — the OpenCode
+bridge is symlinked into `~/.config/opencode/plugins/` automatically
+when the plugin loads (skipped silently if you don't use OpenCode).
 
 ### Manual
 
@@ -52,10 +54,25 @@ run-shell ~/.tmux/plugins/tmux-opencode-session-overview/opencode_session_overvi
 
 Reload tmux config with `tmux source-file ~/.tmux.conf`.
 
-## Install the OpenCode bridge
+## Bridge install (optional)
 
-OpenCode needs a small plugin so it can stamp status onto the current tmux
-pane. Symlink it into OpenCode's plugin directory:
+The bridge is a small OpenCode plugin that stamps status onto the current tmux
+pane. Without it the picker still works — panes running `opencode` or
+`open-code` are listed as `unknown`. With it, you get the `working` /
+`waiting` / `idle` colors and the "needs attention" sort.
+
+When the tmux plugin loads, it symlinks the bridge into
+`~/.config/opencode/plugins/` automatically. The auto-install only runs if
+`~/.config/opencode` already exists (so it never creates state on machines
+where OpenCode isn't installed) and is idempotent.
+
+To opt out, set this before loading the plugin:
+
+```tmux
+set -g @opencode_overview_install_bridge 'off'
+```
+
+To install it manually instead:
 
 ```bash
 mkdir -p ~/.config/opencode/plugins
@@ -65,8 +82,8 @@ ln -sf ~/.tmux/plugins/tmux-opencode-session-overview/.opencode/plugins/tmux-ope
 
 The tmux plugin publishes its `scripts/state.sh` path in the tmux option
 `@opencode_overview_state_script`, so the JS plugin can find it even if the JS
-file is copied into OpenCode's plugin directory. Symlinking still works too: the
-JS plugin can also resolve `scripts/state.sh` relative to the symlink target.
+file is copied (not symlinked) into OpenCode's plugin directory. The JS plugin
+can also resolve `scripts/state.sh` relative to the symlink target.
 
 For unusual installs, override the state script path before starting OpenCode:
 
@@ -98,6 +115,7 @@ set -g @opencode_overview_key 'o'
 set -g @opencode_overview_popup_width '50%'
 set -g @opencode_overview_popup_height '75%'
 set -g @opencode_overview_columns 'pane,status,age,cwd'
+set -g @opencode_overview_install_bridge 'on'
 ```
 
 `@opencode_overview_columns` is a comma-separated list. Supported columns are
@@ -111,7 +129,7 @@ set -g @opencode_overview_columns 'pane,status,age,detail'
 
 ## How it works
 
-- `opencode_session_overview.tmux` installs the tmux key binding.
+- `opencode_session_overview.tmux` installs the tmux key binding and, if `~/.config/opencode` exists, symlinks the OpenCode bridge into `~/.config/opencode/plugins/`.
 - `scripts/list.sh` opens the popup and runs `scripts/picker.sh`.
 - `scripts/picker.sh` reads tmux pane options, formats rows for `fzf`, and jumps to or kills panes based on the selected row.
 - `.opencode/plugins/tmux-opencode-session-overview.js` listens to OpenCode events and runs `scripts/state.sh` in the background.
