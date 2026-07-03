@@ -80,7 +80,8 @@ emit_rows() {
   columns="$(get_tmux_option @opencode_overview_columns 'pane,status,age,cwd')"
 
   tmux list-panes -a -F $'#{session_name}\t#{window_id}\t#{window_index}\t#{pane_id}\t#{pane_index}\t#{pane_current_command}\t#{pane_current_path}\t#{@opencode_state}\t#{@opencode_state_at}\t#{@opencode_reason}\t#{@opencode_tool}\t#{@opencode_window}\t#{@opencode_cwd}' 2>/dev/null |
-    while IFS=$'\t' read -r session window window_index pane pane_index command cwd state at reason tool saved_window saved_cwd; do
+    tr '\t' '\037' |
+    while IFS=$'\037' read -r session window window_index pane pane_index command cwd state at reason tool saved_window saved_cwd; do
       if [ -z "$state" ] && [ "$command" != "opencode" ] && [ "$command" != "open-code" ]; then
         continue
       fi
