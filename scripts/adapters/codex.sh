@@ -2,9 +2,9 @@
 # Codex CLI adapter.
 #
 # Single source of truth for which Codex hook events map to which picker
-# state, plus a config.toml snippet emitter. The snippet is printed to the
-# tmux message line on first run and saved under
-# scripts/snippets/codex-config.toml so users can `cat` it.
+# state, plus a config.toml snippet emitter. The emitter is run by the
+# user, not by the plugin: invoke this script directly to print the
+# config.toml fragment to stdout, then append it to ~/.codex/config.toml.
 #
 # Runtime: state.sh is invoked directly by each hook command — no per-event
 # bash runtime is needed here.
@@ -50,3 +50,9 @@ emit_codex_config_toml() {
       "$(toml_escape "$(hook_command "$path" "$AGENT_ID" "$C_STATE" "$C_REASON")")"
   done
 }
+
+# When run as a script (not sourced), print the config.toml fragment
+# to stdout. The caller passes the path to state.sh as the first argument.
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+  emit_codex_config_toml "${1:?usage: codex.sh <path-to-state.sh>}"
+fi

@@ -52,9 +52,11 @@ On first load the plugin will:
 
 - Symlink `scripts/adapters/opencode.js` into `~/.config/opencode/plugins/`
   (skipped silently if OpenCode isn't installed).
-- Write `scripts/snippets/claude-settings.json` and
-  `scripts/snippets/codex-config.toml` and tell you to merge them into
-  `~/.claude/settings.json` and `~/.codex/config.toml` respectively.
+- Bind `prefix + o` to the picker.
+
+Claude and Codex have no plugin runtime; the plugin does not touch
+`~/.claude/settings.json` or `~/.codex/config.toml`. See
+[Per-agent setup](#per-agent-setup) for the one-time merge step.
 
 ### Manual
 
@@ -64,17 +66,14 @@ Clone the repository to the **canonical install path**:
 git clone https://github.com/geril07/tmux-agents-overview ~/.tmux/plugins/tmux-agents-overview
 ```
 
-The canonical path `~/.tmux/plugins/tmux-agents-overview` is used in the
-generated Claude/Codex snippets and in the OpenCode plugin symlink, so the
-files you paste into `~/.claude/settings.json` and `~/.codex/config.toml`
-work without rewriting any paths.
-
-If you cloned somewhere else (e.g. `~/code/my/tmux-agents-overview`),
-the entry script will auto-create a symlink from the canonical path to
-your checkout on first load — snippets and the OpenCode bridge will then
-work without any further action. Set `TMUX_AGENTS_OVERVIEW_NO_SYMLINK=1`
-in the environment before sourcing the entry script to opt out of the
-auto-symlink.
+The canonical path `~/.tmux/plugins/tmux-agents-overview` is the install
+location the OpenCode plugin symlink points at, so the JS bridge works
+without further action. The Claude/Codex per-agent setup commands below
+also assume this path; if you cloned somewhere else, the entry script
+will auto-create a symlink from the canonical path to your checkout on
+first load and the commands will work as written. Set
+`TMUX_AGENTS_OVERVIEW_NO_SYMLINK=1` in the environment before sourcing
+the entry script to opt out of the auto-symlink.
 
 Add this to your tmux config:
 
@@ -103,27 +102,32 @@ set -g @agents_overview_install_opencode 'off'
 
 ### Claude Code (one-time manual merge)
 
-The plugin writes a settings fragment to
-`scripts/snippets/claude-settings.json` on every load (when `~/.claude`
-exists). Merge it into your existing `~/.claude/settings.json` so that
-the plugin's `hooks` block is added under your existing top-level keys.
-To opt out of the snippet being (re)written:
+Claude Code has no plugin runtime; the plugin does not touch
+`~/.claude/settings.json`. Run the adapter to print a `hooks` block,
+then merge it under your existing top-level keys:
 
-```tmux
-set -g @agents_overview_install_claude_hint 'off'
+```sh
+bash ~/.tmux/plugins/tmux-agents-overview/scripts/adapters/claude.sh \
+  ~/.tmux/plugins/tmux-agents-overview/scripts/state.sh \
+  > /tmp/agents-overview-claude.json
 ```
 
-The hook commands inside the snippet call `scripts/state.sh claude <state>
-<reason>` directly — no extra wrapper, no extra process.
+The hook commands inside the fragment call
+`scripts/state.sh claude <state> <reason>` directly — no extra wrapper,
+no extra process. Re-run the command only if you change the plugin's
+install path; the table that generates the fragment is the same one
+that powers the picker.
 
 ### Codex CLI (one-time manual merge)
 
-The plugin writes a `[hooks]` table fragment to
-`scripts/snippets/codex-config.toml` on every load (when `~/.codex`
-exists). Append it to your `~/.codex/config.toml`. To opt out:
+Codex CLI has no plugin runtime; the plugin does not touch
+`~/.codex/config.toml`. Run the adapter to print a `[hooks]` table
+fragment, then append it to your config:
 
-```tmux
-set -g @agents_overview_install_codex_hint 'off'
+```sh
+bash ~/.tmux/plugins/tmux-agents-overview/scripts/adapters/codex.sh \
+  ~/.tmux/plugins/tmux-agents-overview/scripts/state.sh \
+  >> ~/.codex/config.toml
 ```
 
 The Codex hook commands call `scripts/state.sh codex <state> <reason>`.
@@ -153,12 +157,14 @@ set -g @agents_overview_popup_width     '50%'
 set -g @agents_overview_popup_height    '75%'
 set -g @agents_overview_columns         'pane,status,age,cwd'
 set -g @agents_overview_install_opencode    'on'
-set -g @agents_overview_install_claude_hint 'on'
-set -g @agents_overview_install_codex_hint  'on'
 ```
 
 `@agents_overview_columns` is a comma-separated list. Supported columns are
 `pane`, `status`, `age`, `cwd`, `detail`, `command`, `agent`, and `pane_id`.
+
+- `agent` shows the resolved agent id from the registry (`opencode`,
+  `codex`, or `claude`), regardless of which process name matched.
+- `command` shows the raw `pane_current_command` (e.g. `open-code`).
 
 For example, to show which agent is running instead of the cwd:
 
@@ -170,9 +176,8 @@ set -g @agents_overview_columns 'pane,status,age,agent'
 
 - `agents_overview.tmux` ensures `~/.tmux/plugins/tmux-agents-overview`
   points at the install (auto-symlink if missing), binds the key, publishes
-  the `state.sh` path so the OpenCode plugin can find it, symlinks the
-  OpenCode plugin if OpenCode is installed, and writes the Claude/Codex
-  snippet files if their config dirs exist.
+  the `state.sh` path so the OpenCode plugin can find it, and symlinks
+  the OpenCode plugin if OpenCode is installed.
 - `scripts/list.sh` opens the popup and runs `scripts/picker.sh`.
 - `scripts/picker.sh` reads tmux pane options in a single `list-panes -a`
   call, formats rows for `fzf`, and jumps to or kills panes based on the
@@ -180,12 +185,14 @@ set -g @agents_overview_columns 'pane,status,age,agent'
 - Each agent's adapter turns that agent's events into `state.sh` calls:
   - **OpenCode**: a JS plugin (`scripts/adapters/opencode.js`) listens to
     OpenCode's `event` callback and spawns `state.sh opencode <state> [reason]`.
-  - **Claude Code**: a `hooks` block in `~/.claude/settings.json` (generated
-    from the table in `scripts/adapters/claude.sh`) runs `state.sh claude
-    <state> [reason]` per event.
-  - **Codex CLI**: a `[hooks]` table in `~/.codex/config.toml` (generated
-    from the table in `scripts/adapters/codex.sh`) runs `state.sh codex
-    <state> [reason]` per event.
+  - **Claude Code**: a `hooks` block in `~/.claude/settings.json` runs
+    `state.sh claude <state> [reason]` per event. The fragment is
+    generated by running `bash scripts/adapters/claude.sh` — see
+    [Per-agent setup](#per-agent-setup).
+  - **Codex CLI**: a `[hooks]` table in `~/.codex/config.toml` runs
+    `state.sh codex <state> [reason]` per event. The fragment is
+    generated by running `bash scripts/adapters/codex.sh` — see
+    [Per-agent setup](#per-agent-setup).
 - `scripts/state.sh` writes the latest state into the tmux pane options
   `@agent_<id>_state` / `_state_at` / `_reason`.
 
@@ -271,13 +278,16 @@ Codex has no native "asking the user a question" event, so the
    ```
 2. Drop `scripts/adapters/<id>.sh` (or `.js` for a plugin-runtime system)
    that defines a registrations table the same way `claude.sh` and
-   `codex.sh` do.
-3. If the agent uses a bash hook, add a `install_<id>_hint` function to
-   `agents_overview.tmux` that calls `write_snippet` and prints a
-   one-liner via `tmux display-message`.
+   `codex.sh` do. If the adapter is a bash script, also add a
+   `run-as-script` guard at the bottom that calls the snippet emitter
+   when `$BASH_SOURCE` equals `$0`, so users can print the fragment
+   with `bash scripts/adapters/<id>.sh <state.sh-path>`.
+3. Document the merge step in **Per-agent setup** so users know how to
+   wire the agent's hooks.
 
-The picker, the install, and the snippet generator all read from the
-registry and the per-adapter table — no other change is required.
+The picker, the OpenCode auto-install, and the manual hook fragment all
+read from the registry and the per-adapter table — no other change is
+required.
 
 ## License
 

@@ -41,7 +41,7 @@ abs_diff() {
 
 format_display_line() {
   local columns="${1:-pane,status,age,cwd}"
-  local label="$2" status="$3" ago="$4" display_cwd="$5" detail="$6" command="$7" pane="$8"
+  local label="$2" status="$3" ago="$4" display_cwd="$5" detail="$6" command="$7" pane="$8" agent="$9"
   local line='' column part
   local selected_columns=()
 
@@ -56,7 +56,7 @@ format_display_line() {
     age | ago) part="$(printf '%5s' "$ago")" ;;
     cwd | path) part="$display_cwd" ;;
     detail | reason) part="$detail" ;;
-    agent) part="$command" ;;
+    agent) part="$agent" ;;
     command | cmd) part="$command" ;;
     pane_id | pane-id) part="$pane" ;;
     *) continue ;;
@@ -162,7 +162,7 @@ emit_rows() {
       [ -z "$display_cwd" ] && display_cwd='-'
 
       label="$session:$window_index.$pane_index"
-      line="$(format_display_line "$columns" "$label" "$status" "$ago" "$display_cwd" "$detail" "$command" "$pane")"
+      line="$(format_display_line "$columns" "$label" "$status" "$ago" "$display_cwd" "$detail" "$command" "$pane" "$agent")"
 
       printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$rank" "$session" "$pane" "$window" "$line" "$detail" "$window_index" "$pane_index"

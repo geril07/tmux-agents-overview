@@ -8,9 +8,10 @@ CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/helpers.sh
 . "$CURRENT_DIR/scripts/helpers.sh"
 
-# Canonical install path. Snippets and the JS plugin always reference this
-# location so users can paste a settings.json / config.toml fragment without
-# rewriting paths. Matches tpm's default install location.
+# Canonical install path. The OpenCode plugin symlink and any per-agent
+# hook commands embedded in user config all reference this location, so
+# they stay valid even if the user moves the plugin dir (as long as the
+# symlink follows). Matches tpm's default install location.
 CANONICAL_DIR="$HOME/.tmux/plugins/tmux-agents-overview"
 
 # If the canonical path is missing (or a broken symlink), point it at the
@@ -27,9 +28,10 @@ ensure_canonical_link() {
 }
 ensure_canonical_link
 
-# All embedded paths in snippets, bindings, and the JS plugin go through
-# this variable. It points at the canonical location so snippets stay valid
-# even if the user moves the plugin dir (as long as the symlink follows).
+# PLUGIN_DIR is the canonical install path. The OpenCode plugin symlink
+# and any per-agent hook commands embedded in user config all reference
+# this location, so they stay valid even if the user moves the plugin dir
+# (as long as the symlink follows).
 PLUGIN_DIR="$CANONICAL_DIR"
 
 overview_key="$(get_tmux_option @agents_overview_key 'o')"
@@ -40,21 +42,9 @@ tmux set-option -gq @agents_overview_state_script "$PLUGIN_DIR/scripts/state.sh"
 tmux bind-key "$overview_key" \
   run-shell "'$PLUGIN_DIR/scripts/list.sh' '#{client_name}' '#{pane_id}' '#{session_name}' '#{window_index}' '#{pane_index}'"
 
-# Emit a snippet file under scripts/snippets/<name> for the given agent.
-# The snippet is a self-contained config fragment users paste into the
-# agent's config (Claude's settings.json or Codex's config.toml). The
-# command path inside the snippet is the canonical PLUGIN_DIR, not the
-# actual install dir.
-write_snippet() {
-  local agent="$1" file="$2" emit_fn="$3"
-  local snippets_dir="$CURRENT_DIR/scripts/snippets"
-  local snippet="$snippets_dir/$file"
-  mkdir -p "$snippets_dir"
-  . "$CURRENT_DIR/scripts/adapters/$agent.sh"
-  "$emit_fn" "$PLUGIN_DIR/scripts/state.sh" >"$snippet"
-  printf '%s' "$snippet"
-}
-
+# Auto-install the OpenCode JS plugin into ~/.config/opencode/plugins/.
+# Claude and Codex have no plugin runtime — see README for how to wire
+# their hooks manually.
 install_opencode_plugin() {
   if [ "$(get_tmux_option @agents_overview_install_opencode 'on')" = "off" ]; then
     return 0
@@ -73,30 +63,4 @@ install_opencode_plugin() {
   ln -s "$source" "$target"
 }
 
-install_claude_hint() {
-  if [ "$(get_tmux_option @agents_overview_install_claude_hint 'on')" = "off" ]; then
-    return 0
-  fi
-  [ -d "$HOME/.claude" ] || return 0
-
-  local snippet
-  snippet="$(write_snippet claude claude-settings.json emit_claude_settings_json)"
-
-  tmux display-message "tmux-agents-overview: merge $snippet into ~/.claude/settings.json to enable Claude status"
-}
-
-install_codex_hint() {
-  if [ "$(get_tmux_option @agents_overview_install_codex_hint 'on')" = "off" ]; then
-    return 0
-  fi
-  [ -d "$HOME/.codex" ] || return 0
-
-  local snippet
-  snippet="$(write_snippet codex codex-config.toml emit_codex_config_toml)"
-
-  tmux display-message "tmux-agents-overview: merge $snippet into ~/.codex/config.toml to enable Codex status"
-}
-
 install_opencode_plugin
-install_claude_hint
-install_codex_hint

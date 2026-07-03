@@ -3,9 +3,9 @@
 #
 # This file is the single source of truth for which Claude Code hook events
 # map to which picker state, plus a settings.json snippet emitter. The
-# settings.json snippet is printed to the tmux message line on first run
-# and saved under scripts/snippets/claude-settings.json so users can
-# `cat` it.
+# emitter is run by the user, not by the plugin: invoke this script
+# directly to print the settings.json fragment to stdout, then merge it
+# into ~/.claude/settings.json.
 #
 # Runtime: state.sh is invoked directly by each hook command — no per-event
 # bash runtime is needed here.
@@ -61,3 +61,9 @@ emit_claude_settings_json() {
   done
   printf '\n  }\n}\n'
 }
+
+# When run as a script (not sourced), print the settings.json fragment
+# to stdout. The caller passes the path to state.sh as the first argument.
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+  emit_claude_settings_json "${1:?usage: claude.sh <path-to-state.sh>}"
+fi
