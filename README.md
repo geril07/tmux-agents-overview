@@ -173,6 +173,23 @@ set -g @agents_overview_install_opencode    'on'
 dependency. `lua` and `python` use `scripts/rows.lua` / `scripts/rows.py` for
 faster list rendering and fall back to Bash if the runtime is missing.
 
+### Performance
+
+Measured on a session with 55 tmux panes (24 running Codex agents):
+
+| Runtime | First invocation | Steady state |
+| --- | ---: | ---: |
+| `bash` | ~330ms | ~80ms |
+| `python` | ~80ms | ~80ms |
+| `lua` | ~55ms | ~55ms |
+
+`lua` and `python` are consistently fast because they avoid the shell's
+startup and parsing overhead. `bash` is competitive when warm (OS cache
+hits) but the first `prefix + o` invocation is noticeably slower.
+
+`lua` is the fastest option. `python` is a middle ground with similar
+per-pane scaling and no JIT dependency.
+
 - `agent` shows the resolved agent id from the registry (`opencode`,
   `codex`, or `claude`), regardless of which process name matched.
 - `command` shows the raw `pane_current_command` (e.g. `open-code`).
