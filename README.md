@@ -33,6 +33,7 @@ options as the state store and `fzf` as the overlay UI.
   - [Claude Code](https://claude.com/claude-code) (`claude` CLI, manual settings.json merge)
   - [Codex CLI](https://github.com/openai/codex) (`codex` CLI, manual config.toml merge)
 - bash
+- Optional: `lua` for faster row generation (`@agents_overview_runtime 'lua'`)
 
 The picker works for any of the three agents even without the optional hook
 setup when tmux reports the CLI name as the foreground command — those panes
@@ -160,11 +161,17 @@ set -g @agents_overview_key             'o'
 set -g @agents_overview_popup_width     '50%'
 set -g @agents_overview_popup_height    '75%'
 set -g @agents_overview_columns         'pane,status,age,cwd'
+set -g @agents_overview_runtime         'bash'
 set -g @agents_overview_install_opencode    'on'
 ```
 
 `@agents_overview_columns` is a comma-separated list. Supported columns are
 `pane`, `status`, `age`, `cwd`, `detail`, `command`, `agent`, and `pane_id`.
+
+`@agents_overview_runtime` controls row generation. Supported values are
+`bash` and `lua`. `bash` is the default and has no extra dependency. `lua`
+uses `scripts/rows.lua` for faster list rendering and falls back to Bash if
+the `lua` executable is missing.
 
 - `agent` shows the resolved agent id from the registry (`opencode`,
   `codex`, or `claude`), regardless of which process name matched.
@@ -183,10 +190,12 @@ set -g @agents_overview_columns 'pane,status,age,agent'
   the `state.sh` path so the OpenCode plugin can find it, and symlinks
   the OpenCode plugin if OpenCode is installed.
 - `scripts/list.sh` opens the popup and runs `scripts/picker.sh`.
-- `scripts/picker.sh` reads tmux pane options in a single `list-panes -a`
-  call, includes panes with a known foreground command or a confirmed host
-  process, formats rows for `fzf`, and jumps to or kills panes based on the
-  selected row.
+- `scripts/picker.sh` opens `fzf`, jumps to or kills panes based on the
+  selected row, and dispatches row generation to Bash by default or Lua when
+  `@agents_overview_runtime 'lua'` is set.
+- The row generator reads tmux pane options in a single `list-panes -a` call,
+  includes panes with a known foreground command or a confirmed host process,
+  and formats rows for `fzf`.
 - Each agent's adapter turns that agent's events into `state.sh` calls:
   - **OpenCode**: a JS plugin (`scripts/adapters/opencode.js`) listens to
     OpenCode's `event` callback and spawns `state.sh opencode <state> [reason]`.

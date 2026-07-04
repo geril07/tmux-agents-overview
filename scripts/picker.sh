@@ -137,7 +137,7 @@ process_line_matches_agent() {
   return 1
 }
 
-emit_rows() {
+emit_rows_bash() {
   local now columns fmt agent
   local -a agents=() rows=() host_ttys=() argv_ttys=()
   local row entry agent_csv ps_output
@@ -307,6 +307,31 @@ emit_rows() {
         "$rank" "$session" "$pane" "$window" "$line" "$detail" "$window_index" "$pane_index"
     done
   } | sort -t$'\t' -k2,2 -k7,7n -k8,8n | awk -F '\t' 'BEGIN { OFS = "\t"; c = 0 } { c++; $5 = c "  " $5; print }'
+}
+
+emit_rows_lua() {
+  local process_registry host_registry
+
+  command -v lua >/dev/null 2>&1 || return 1
+  [ -r "$DIR/rows.lua" ] || return 1
+
+  process_registry="$(printf '%s\n' "${AGENT_PROCESS_NAMES[@]}")"
+  host_registry="$(printf '%s\n' "${AGENT_HOST_PROCESS_NAMES[@]}")"
+
+  AGENTS_OVERVIEW_AGENT_PROCESS_NAMES="$process_registry" \
+    AGENTS_OVERVIEW_AGENT_HOST_PROCESS_NAMES="$host_registry" \
+    lua "$DIR/rows.lua"
+}
+
+emit_rows() {
+  case "$(get_tmux_option @agents_overview_runtime 'bash')" in
+  lua)
+    emit_rows_lua || emit_rows_bash
+    ;;
+  bash | *)
+    emit_rows_bash
+    ;;
+  esac
 }
 
 initial_position_for_pane() {
