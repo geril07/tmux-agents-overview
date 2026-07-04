@@ -33,7 +33,7 @@ options as the state store and `fzf` as the overlay UI.
   - [Claude Code](https://claude.com/claude-code) (`claude` CLI, manual settings.json merge)
   - [Codex CLI](https://github.com/openai/codex) (`codex` CLI, manual config.toml merge)
 - bash
-- Optional: `lua` for faster row generation (`@agents_overview_runtime 'lua'`)
+- Optional: `lua` or `python3` for faster row generation (`@agents_overview_runtime 'lua'` or `'python'`)
 
 The picker works for any of the three agents even without the optional hook
 setup when tmux reports the CLI name as the foreground command — those panes
@@ -169,9 +169,9 @@ set -g @agents_overview_install_opencode    'on'
 `pane`, `status`, `age`, `cwd`, `detail`, `command`, `agent`, and `pane_id`.
 
 `@agents_overview_runtime` controls row generation. Supported values are
-`bash` and `lua`. `bash` is the default and has no extra dependency. `lua`
-uses `scripts/rows.lua` for faster list rendering and falls back to Bash if
-the `lua` executable is missing.
+`bash`, `lua`, and `python`. `bash` is the default and has no extra
+dependency. `lua` and `python` use `scripts/rows.lua` / `scripts/rows.py` for
+faster list rendering and fall back to Bash if the runtime is missing.
 
 - `agent` shows the resolved agent id from the registry (`opencode`,
   `codex`, or `claude`), regardless of which process name matched.

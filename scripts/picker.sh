@@ -47,10 +47,27 @@ emit_rows_lua() {
     lua "$DIR/rows.lua"
 }
 
+emit_rows_python() {
+  local process_registry host_registry
+
+  command -v python3 >/dev/null 2>&1 || return 1
+  [ -r "$DIR/rows.py" ] || return 1
+
+  process_registry="$(printf '%s\n' "${AGENT_PROCESS_NAMES[@]}")"
+  host_registry="$(printf '%s\n' "${AGENT_HOST_PROCESS_NAMES[@]}")"
+
+  AGENTS_OVERVIEW_AGENT_PROCESS_NAMES="$process_registry" \
+    AGENTS_OVERVIEW_AGENT_HOST_PROCESS_NAMES="$host_registry" \
+    python3 "$DIR/rows.py"
+}
+
 emit_rows() {
   case "$(get_tmux_option @agents_overview_runtime 'bash')" in
   lua)
     emit_rows_lua || emit_rows_bash
+    ;;
+  python)
+    emit_rows_python || emit_rows_bash
     ;;
   bash | *)
     emit_rows_bash
