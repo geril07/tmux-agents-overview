@@ -110,47 +110,42 @@ pane_host_owned_by() {
   return 1
 }
 
-# pane_foreground_has_agent <tty> <agent>
-# Returns 0 when the tty's foreground process group contains a command or argv
-# path whose basename is the agent id. Returns 2 when probing is unavailable.
-pane_foreground_has_agent() {
-  local tty="$1" agent="$2"
-  local line pgid tpgid proc_command args arg base saw_process=0 saw_tpgid=0
+# normalize_ps_tty <ps-tty>
+# Converts ps' tty column (for example, pts/15) to tmux's /dev/pts/15 form.
+normalize_ps_tty() {
+  local tty="$1"
+  case "$tty" in
+  '' | \?) return 1 ;;
+  /*) printf '%s' "$tty" ;;
+  *) printf '/dev/%s' "$tty" ;;
+  esac
+}
 
-  [ -n "$tty" ] || return 2
-  command -v ps >/dev/null 2>&1 || return 2
+# process_line_matches_agent <command> <agent> <args>
+# Returns 0 when the process command or any argv path basename is the agent id.
+process_line_matches_agent() {
+  local proc_command="$1" agent="$2" args="${3:-}"
+  local arg base
 
-  while IFS= read -r line; do
-    [ -n "$line" ] || continue
-    saw_process=1
+  [ "$proc_command" = "$agent" ] && return 0
 
-    read -r pgid tpgid proc_command args <<<"$line"
-    [ -n "$pgid" ] && [ -n "$tpgid" ] && [ -n "$proc_command" ] || continue
-    [ "$tpgid" != "-1" ] || continue
-    [ "$pgid" = "$tpgid" ] || continue
-    saw_tpgid=1
+  for arg in $args; do
+    base="${arg##*/}"
+    [ "$base" = "$agent" ] && return 0
+  done
 
-    if [ "$proc_command" = "$agent" ]; then
-      return 0
-    fi
-
-    for arg in $args; do
-      base="${arg##*/}"
-      if [ "$base" = "$agent" ]; then
-        return 0
-      fi
-    done
-  done < <(ps -t "$tty" -o pgid=,tpgid=,comm=,args= 2>/dev/null) || return 2
-
-  [ "$saw_process" -eq 1 ] || return 2
-  [ "$saw_tpgid" -eq 1 ] || return 2
   return 1
 }
 
 emit_rows() {
   local now columns fmt agent
-  local -a agents=()
-  local f
+  local -a agents=() rows=() host_ttys=() argv_ttys=()
+  local row entry agent_csv ps_output
+  local ps_tty normalized_tty pgid tpgid proc_command args host_agent
+  local argv_tty_csv
+  declare -A seen_host_tty=()
+  declare -A host_probe_agents=()
+  declare -A host_probe_authoritative=()
   now=$(date +%s)
   columns="$(get_tmux_option @agents_overview_columns 'pane,status,age,cwd')"
 
@@ -167,13 +162,82 @@ emit_rows() {
       "$agent" "$agent" "$agent")
   done
 
-  tmux list-panes -a -F "$fmt" 2>/dev/null |
-    tr '\t' '\037' |
-    while IFS=$'\037' read -r -a fields; do
+  mapfile -t rows < <(tmux list-panes -a -F "$fmt" 2>/dev/null | tr '\t' '\037')
+
+  for row in "${rows[@]}"; do
+    local -a probe_fields=()
+    IFS=$'\037' read -r -a probe_fields <<<"$row"
+    host_agent="$(pane_host_owned_by "${probe_fields[5]:-}")" || host_agent=''
+    [ -n "$host_agent" ] || continue
+    tty="${probe_fields[7]:-}"
+    [ -n "$tty" ] || continue
+    [ -n "${seen_host_tty[$tty]:-}" ] && continue
+    seen_host_tty["$tty"]=1
+    host_ttys+=("$tty")
+  done
+
+  if [ "${#host_ttys[@]}" -gt 0 ] && command -v ps >/dev/null 2>&1; then
+    agent_csv="$(IFS=,; printf '%s' "${agents[*]}")"
+    if ps_output="$(ps -C "$agent_csv" -o tty=,pgid=,tpgid=,comm= 2>/dev/null)"; then
+      while IFS= read -r row; do
+        [ -n "$row" ] || continue
+        read -r ps_tty pgid tpgid proc_command <<<"$row"
+        normalized_tty="$(normalize_ps_tty "$ps_tty")" || continue
+        [ -n "${seen_host_tty[$normalized_tty]:-}" ] || continue
+        [ -n "$pgid" ] && [ -n "$tpgid" ] && [ -n "$proc_command" ] || continue
+        [ "$tpgid" != "-1" ] || continue
+        [ "$pgid" = "$tpgid" ] || continue
+
+        for agent in "${agents[@]}"; do
+          if [ "$proc_command" = "$agent" ]; then
+            host_probe_agents["$normalized_tty"]="$agent"
+            host_probe_authoritative["$normalized_tty"]=1
+            break
+          fi
+        done
+      done <<<"$ps_output"
+    fi
+
+    for tty in "${host_ttys[@]}"; do
+      [ -n "${host_probe_authoritative[$tty]:-}" ] && continue
+      argv_ttys+=("$tty")
+    done
+
+    if [ "${#argv_ttys[@]}" -gt 0 ]; then
+      argv_tty_csv="$(IFS=,; printf '%s' "${argv_ttys[*]}")"
+      if ps_output="$(ps -t "$argv_tty_csv" -o tty=,pgid=,tpgid=,comm=,args= 2>/dev/null)"; then
+        for tty in "${argv_ttys[@]}"; do
+          host_probe_authoritative["$tty"]=1
+        done
+
+        while IFS= read -r row; do
+          [ -n "$row" ] || continue
+          read -r ps_tty pgid tpgid proc_command args <<<"$row"
+          normalized_tty="$(normalize_ps_tty "$ps_tty")" || continue
+          [ -n "${seen_host_tty[$normalized_tty]:-}" ] || continue
+          [ -n "$pgid" ] && [ -n "$tpgid" ] && [ -n "$proc_command" ] || continue
+          [ "$tpgid" != "-1" ] || continue
+          [ "$pgid" = "$tpgid" ] || continue
+
+          for agent in "${agents[@]}"; do
+            if process_line_matches_agent "$proc_command" "$agent" "$args"; then
+              host_probe_agents["$normalized_tty"]="$agent"
+              break
+            fi
+          done
+        done <<<"$ps_output"
+      fi
+    fi
+  fi
+
+  {
+    for row in "${rows[@]}"; do
+      local -a fields=()
+      IFS=$'\037' read -r -a fields <<<"$row"
       local session window window_index pane pane_index command cwd tty
       local label display_cwd line detail state at reason
       local icon ago rank status
-      local idx base host_backed probe_status
+      local idx base host_backed
       session="${fields[0]}"
       window="${fields[1]}"
       window_index="${fields[2]}"
@@ -191,20 +255,17 @@ emit_rows() {
       fi
 
       if [ "$host_backed" -eq 1 ] && [ -n "$agent" ]; then
-        if pane_foreground_has_agent "$tty" "$agent"; then
+        if [ "${host_probe_agents[$tty]:-}" = "$agent" ]; then
           :
+        elif [ -z "${host_probe_authoritative[$tty]:-}" ]; then
+          for idx in "${!agents[@]}"; do
+            [ "${agents[$idx]}" = "$agent" ] || continue
+            base=$((8 + idx * 3))
+            [ -n "${fields[$base]:-}" ] || agent=''
+            break
+          done
         else
-          probe_status=$?
-          if [ "$probe_status" -eq 2 ]; then
-            for idx in "${!agents[@]}"; do
-              [ "${agents[$idx]}" = "$agent" ] || continue
-              base=$((8 + idx * 3))
-              [ -n "${fields[$base]:-}" ] || agent=''
-              break
-            done
-          else
-            agent=''
-          fi
+          agent=''
         fi
       fi
 
@@ -244,7 +305,8 @@ emit_rows() {
 
       printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$rank" "$session" "$pane" "$window" "$line" "$detail" "$window_index" "$pane_index"
-    done | sort -t$'\t' -k2,2 -k7,7n -k8,8n | awk -F '\t' 'BEGIN { OFS = "\t"; c = 0 } { c++; $5 = c "  " $5; print }'
+    done
+  } | sort -t$'\t' -k2,2 -k7,7n -k8,8n | awk -F '\t' 'BEGIN { OFS = "\t"; c = 0 } { c++; $5 = c "  " $5; print }'
 }
 
 initial_position_for_pane() {
