@@ -12,6 +12,7 @@ coverage/
 dist/
 tmp/
 *.log
+__pycache__/
 
 # Local checkouts of reference repos
 references/
