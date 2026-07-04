@@ -15,7 +15,9 @@ options as the state store and `fzf` as the overlay UI.
 
 - `prefix + o` opens the agent-pane picker.
 - Lists tmux panes whose foreground command is `opencode` / `open-code`,
-  `codex`, or `claude` — across all sessions and windows.
+  `codex`, or `claude`, plus panes running a registered host process such as
+  Codex under `node` when the foreground process group confirms the agent —
+  across all sessions and windows.
 - Shows `working`, `waiting`, `idle`, or `unknown` for each.
 - `enter` jumps to the selected tmux pane.
 - `ctrl-x` kills the selected tmux pane.
@@ -33,8 +35,10 @@ options as the state store and `fzf` as the overlay UI.
 - bash
 
 The picker works for any of the three agents even without the optional hook
-setup — those panes just show as `unknown`. Hooks add the colors and the
-"needs attention" classification.
+setup when tmux reports the CLI name as the foreground command — those panes
+show as `unknown`. Hooks add the colors, the "needs attention" classification,
+and a fallback detection signal for agents hosted under another registered
+process name, such as Codex panes whose foreground command is `node`.
 
 ## Install
 
@@ -180,7 +184,8 @@ set -g @agents_overview_columns 'pane,status,age,agent'
   the OpenCode plugin if OpenCode is installed.
 - `scripts/list.sh` opens the popup and runs `scripts/picker.sh`.
 - `scripts/picker.sh` reads tmux pane options in a single `list-panes -a`
-  call, formats rows for `fzf`, and jumps to or kills panes based on the
+  call, includes panes with a known foreground command or a confirmed host
+  process, formats rows for `fzf`, and jumps to or kills panes based on the
   selected row.
 - Each agent's adapter turns that agent's events into `state.sh` calls:
   - **OpenCode**: a JS plugin (`scripts/adapters/opencode.js`) listens to
@@ -217,9 +222,14 @@ State lives in tmux, not on disk. It survives tmux client disconnects
 because it is attached to the tmux server, and it disappears when the
 tmux server exits or the pane is killed.
 
-The picker also includes panes whose `pane_current_command` is one of the
-known agent process names, even if no hook has fired yet. Those rows show
-as `unknown`.
+The picker includes panes whose `pane_current_command` is one of the known
+agent process names, even if no hook has fired yet. Those command-only rows
+show as `unknown`. It also includes panes whose current command is a registered
+host process, such as `node` for Codex, when a foreground-process probe finds a
+process or argv path basename matching the agent id, such as `codex`. If process
+probing is unavailable, it falls back to the matching `@agent_<id>_state` option.
+This avoids keeping a pane visible after an agent exits back to a shell or an
+unrelated process.
 
 ## Event Mapping
 
@@ -276,18 +286,20 @@ Codex has no native "asking the user a question" event, so the
      "myagent  myagent-cli"
    )
    ```
-2. Drop `scripts/adapters/<id>.sh` (or `.js` for a plugin-runtime system)
+2. If the agent is hosted by a generic executable name, such as `node`, add
+   that host command to `AGENT_HOST_PROCESS_NAMES` instead of
+   `AGENT_PROCESS_NAMES`, so it is only used with process/state confirmation.
+3. Drop `scripts/adapters/<id>.sh` (or `.js` for a plugin-runtime system)
    that defines a registrations table the same way `claude.sh` and
    `codex.sh` do. If the adapter is a bash script, also add a
    `run-as-script` guard at the bottom that calls the snippet emitter
    when `$BASH_SOURCE` equals `$0`, so users can print the fragment
    with `bash scripts/adapters/<id>.sh <state.sh-path>`.
-3. Document the merge step in **Per-agent setup** so users know how to
+4. Document the merge step in **Per-agent setup** so users know how to
    wire the agent's hooks.
 
 The picker, the OpenCode auto-install, and the manual hook fragment all
-read from the registry and the per-adapter table — no other change is
-required.
+read from the registries and the per-adapter table.
 
 ## License
 

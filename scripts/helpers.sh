@@ -32,13 +32,14 @@ short_home_path() {
 
 # -- Agent registry --------------------------------------------------------
 # Single source of truth for which agents are supported, the tmux option
-# prefix they use to stamp state, and the `pane_current_command` values that
-# identify a pane as running that agent.
+# prefix they use to stamp state, and the `pane_current_command` values used
+# as a fallback when no agent state has been stamped yet.
 #
-# Add a new agent by appending to AGENT_PROCESS_NAMES and dropping a
+# Add a new agent by appending unique commands to AGENT_PROCESS_NAMES and
+# generic host commands to AGENT_HOST_PROCESS_NAMES, then dropping a
 # scripts/adapters/<id>.sh (bash) or <id>.js (JS plugin) into place. The
-# picker, the install script, and the snippet generator all read from this
-# table — no other change is required.
+# picker, the install script, and the snippet generator all read from these
+# tables — no other change is required.
 
 AGENT_PROCESS_NAMES=(
   "opencode opencode open-code"
@@ -46,8 +47,15 @@ AGENT_PROCESS_NAMES=(
   "claude   claude"
 )
 
+# Process names that are too broad to identify an agent by themselves. The
+# picker only accepts these when a process probe or stamped state confirms the
+# agent.
+AGENT_HOST_PROCESS_NAMES=(
+  "codex node"
+)
+
 # agent_process_names <agent>
-# Echoes the space-separated `pane_current_command` values for an agent.
+# Echoes the space-separated fallback `pane_current_command` values for an agent.
 agent_process_names() {
   local agent="$1" entry id n out=""
   for entry in "${AGENT_PROCESS_NAMES[@]}"; do
@@ -61,7 +69,7 @@ agent_process_names() {
 }
 
 # all_agent_process_names
-# Echoes the unique union of every agent's process names (space-separated).
+# Echoes the unique union of every agent's fallback process names.
 all_agent_process_names() {
   local entry n out="" seen
   declare -A seen=()
@@ -69,6 +77,20 @@ all_agent_process_names() {
     for n in ${entry#* }; do
       [ -n "${seen[$n]:-}" ] && continue
       seen["$n"]=1
+      [ -n "$out" ] && out="$out $n" || out="$n"
+    done
+  done
+  printf '%s' "$out"
+}
+
+# agent_host_process_names <agent>
+# Echoes generic host process names that require extra confirmation.
+agent_host_process_names() {
+  local agent="$1" entry id n out=""
+  for entry in "${AGENT_HOST_PROCESS_NAMES[@]}"; do
+    id="${entry%% *}"
+    [ "$id" = "$agent" ] || continue
+    for n in ${entry#* }; do
       [ -n "$out" ] && out="$out $n" || out="$n"
     done
   done

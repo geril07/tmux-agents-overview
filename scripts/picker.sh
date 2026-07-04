@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Interactive picker for tmux panes running a known coding-agent CLI
+# Interactive picker for tmux panes running or reporting a known coding agent
 # (opencode, codex, or claude).
 #
 #   picker.sh        fzf picker
@@ -93,6 +93,60 @@ pane_owned_by() {
   return 1
 }
 
+# pane_host_owned_by <command>
+# Echoes the agent id whose generic host process-name list contains the given
+# command, or empty string when the command is not enough by itself.
+pane_host_owned_by() {
+  local command="$1" entry id n
+  for entry in "${AGENT_HOST_PROCESS_NAMES[@]}"; do
+    id="${entry%% *}"
+    for n in ${entry#* }; do
+      if [ "$n" = "$command" ]; then
+        printf '%s' "$id"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+# pane_foreground_has_agent <tty> <agent>
+# Returns 0 when the tty's foreground process group contains a command or argv
+# path whose basename is the agent id. Returns 2 when probing is unavailable.
+pane_foreground_has_agent() {
+  local tty="$1" agent="$2"
+  local line pgid tpgid proc_command args arg base saw_process=0 saw_tpgid=0
+
+  [ -n "$tty" ] || return 2
+  command -v ps >/dev/null 2>&1 || return 2
+
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    saw_process=1
+
+    read -r pgid tpgid proc_command args <<<"$line"
+    [ -n "$pgid" ] && [ -n "$tpgid" ] && [ -n "$proc_command" ] || continue
+    [ "$tpgid" != "-1" ] || continue
+    [ "$pgid" = "$tpgid" ] || continue
+    saw_tpgid=1
+
+    if [ "$proc_command" = "$agent" ]; then
+      return 0
+    fi
+
+    for arg in $args; do
+      base="${arg##*/}"
+      if [ "$base" = "$agent" ]; then
+        return 0
+      fi
+    done
+  done < <(ps -t "$tty" -o pgid=,tpgid=,comm=,args= 2>/dev/null) || return 2
+
+  [ "$saw_process" -eq 1 ] || return 2
+  [ "$saw_tpgid" -eq 1 ] || return 2
+  return 1
+}
+
 emit_rows() {
   local now columns fmt agent
   local -a agents=()
@@ -107,7 +161,7 @@ emit_rows() {
 
   # Build the tmux format string: shared columns, then 3 option columns
   # per registered agent (state, state_at, reason).
-  fmt=$'#{session_name}\t#{window_id}\t#{window_index}\t#{pane_id}\t#{pane_index}\t#{pane_current_command}\t#{pane_current_path}'
+  fmt=$'#{session_name}\t#{window_id}\t#{window_index}\t#{pane_id}\t#{pane_index}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_tty}'
   for agent in "${agents[@]}"; do
     fmt+=$(printf '\t#{@agent_%s_state}\t#{@agent_%s_state_at}\t#{@agent_%s_reason}' \
       "$agent" "$agent" "$agent")
@@ -116,10 +170,10 @@ emit_rows() {
   tmux list-panes -a -F "$fmt" 2>/dev/null |
     tr '\t' '\037' |
     while IFS=$'\037' read -r -a fields; do
-      local session window window_index pane pane_index command cwd
+      local session window window_index pane pane_index command cwd tty
       local label display_cwd line detail state at reason
       local icon ago rank status
-      local idx base
+      local idx base host_backed probe_status
       session="${fields[0]}"
       window="${fields[1]}"
       window_index="${fields[2]}"
@@ -127,14 +181,40 @@ emit_rows() {
       pane_index="${fields[4]}"
       command="${fields[5]}"
       cwd="${fields[6]}"
+      tty="${fields[7]}"
 
-      agent="$(pane_owned_by "$command")" || continue
+      host_backed=0
+      agent="$(pane_owned_by "$command")" || agent=''
+      if [ -z "$agent" ]; then
+        agent="$(pane_host_owned_by "$command")" || agent=''
+        host_backed=1
+      fi
+
+      if [ "$host_backed" -eq 1 ] && [ -n "$agent" ]; then
+        if pane_foreground_has_agent "$tty" "$agent"; then
+          :
+        else
+          probe_status=$?
+          if [ "$probe_status" -eq 2 ]; then
+            for idx in "${!agents[@]}"; do
+              [ "${agents[$idx]}" = "$agent" ] || continue
+              base=$((8 + idx * 3))
+              [ -n "${fields[$base]:-}" ] || agent=''
+              break
+            done
+          else
+            agent=''
+          fi
+        fi
+      fi
+
+      [ -n "$agent" ] || continue
 
       # Find this agent's index in the registry so we can index into fields[].
       for idx in "${!agents[@]}"; do
         [ "${agents[$idx]}" = "$agent" ] && break
       done
-      base=$((7 + idx * 3))
+      base=$((8 + idx * 3))
       state="${fields[$base]:-}"
       at="${fields[$((base + 1))]:-}"
       reason="${fields[$((base + 2))]:-}"
