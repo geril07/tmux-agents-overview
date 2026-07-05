@@ -17,7 +17,8 @@ DEFAULT_AGENT_PROCESS_NAMES=(
   "claude   claude"
 )
 DEFAULT_AGENT_HOST_PROCESS_NAMES=(
-  "codex node"
+  "node"
+  "npm"
 )
 
 # ---- Parse registries from env or use defaults ----
@@ -114,16 +115,10 @@ pane_owned_by() {
   return 1
 }
 
-pane_host_owned_by() {
-  local command="$1" entry id n
+is_host_process_name() {
+  local command="$1" entry
   for entry in "${AGENT_HOST_PROCESS_NAMES[@]}"; do
-    id="${entry%% *}"
-    for n in ${entry#* }; do
-      if [ "$n" = "$command" ]; then
-        printf '%s' "$id"
-        return 0
-      fi
-    done
+    [ "$entry" = "$command" ] && return 0
   done
   return 1
 }
@@ -142,7 +137,7 @@ main() {
   local now columns fmt agent
   local -a agents=() rows=() host_ttys=() fallback_ttys=()
   local row entry agent_csv ps_output
-  local ps_tty normalized_tty pgid tpgid proc_command host_agent
+  local ps_tty normalized_tty pgid tpgid proc_command
   local fallback_tty_csv
   declare -A seen_host_tty=()
   declare -A host_probe_agents=()
@@ -168,8 +163,7 @@ main() {
   for row in "${rows[@]}"; do
     local -a probe_fields=()
     IFS=$'\037' read -r -a probe_fields <<<"$row"
-    host_agent="$(pane_host_owned_by "${probe_fields[5]:-}")" || host_agent=''
-    [ -n "$host_agent" ] || continue
+    is_host_process_name "${probe_fields[5]:-}" || continue
     tty="${probe_fields[7]:-}"
     [ -n "$tty" ] || continue
     [ -n "${seen_host_tty[$tty]:-}" ] && continue
@@ -178,7 +172,8 @@ main() {
   done
 
   if [ "${#host_ttys[@]}" -gt 0 ] && command -v ps >/dev/null 2>&1; then
-    agent_csv="$(IFS=,; printf '%s' "${agents[*]}")"
+    agent_csv="$(all_agent_process_names)"
+    agent_csv="${agent_csv// /,}"
     if ps_output="$(ps -C "$agent_csv" -o tty=,pgid=,tpgid=,comm= 2>/dev/null)"; then
       while IFS= read -r row; do
         [ -n "$row" ] || continue
@@ -189,13 +184,10 @@ main() {
         [ "$tpgid" != "-1" ] || continue
         [ "$pgid" = "$tpgid" ] || continue
 
-        for agent in "${agents[@]}"; do
-          if [ "$proc_command" = "$agent" ]; then
-            host_probe_agents["$normalized_tty"]="$agent"
-            host_probe_authoritative["$normalized_tty"]=1
-            break
-          fi
-        done
+        agent="$(pane_owned_by "$proc_command")" || agent=''
+        [ -n "$agent" ] || continue
+        host_probe_agents["$normalized_tty"]="$agent"
+        host_probe_authoritative["$normalized_tty"]=1
       done <<<"$ps_output"
     fi
 
@@ -218,12 +210,9 @@ main() {
           [ -n "${seen_host_tty[$normalized_tty]:-}" ] || continue
           [ -n "$proc_command" ] || continue
 
-          for agent in "${agents[@]}"; do
-            if [ "$proc_command" = "$agent" ]; then
-              host_probe_agents["$normalized_tty"]="$agent"
-              break
-            fi
-          done
+          agent="$(pane_owned_by "$proc_command")" || agent=''
+          [ -n "$agent" ] || continue
+          host_probe_agents["$normalized_tty"]="$agent"
         done <<<"$ps_output"
       fi
     fi
@@ -236,7 +225,7 @@ main() {
       local session window window_index pane pane_index command cwd tty
       local label display_cwd line detail state at reason
       local icon ago rank status
-      local idx base host_backed
+      local idx base host_backed best_at candidate_state candidate_at
       session="${fields[0]}"
       window="${fields[1]}"
       window_index="${fields[2]}"
@@ -249,19 +238,31 @@ main() {
       host_backed=0
       agent="$(pane_owned_by "$command")" || agent=''
       if [ -z "$agent" ]; then
-        agent="$(pane_host_owned_by "$command")" || agent=''
-        host_backed=1
+        if is_host_process_name "$command"; then
+          host_backed=1
+        fi
       fi
 
-      if [ "$host_backed" -eq 1 ] && [ -n "$agent" ]; then
-        if [ "${host_probe_agents[$tty]:-}" = "$agent" ]; then
-          :
+      if [ "$host_backed" -eq 1 ]; then
+        if [ -n "${host_probe_agents[$tty]:-}" ]; then
+          agent="${host_probe_agents[$tty]}"
         elif [ -z "${host_probe_authoritative[$tty]:-}" ]; then
+          agent=''
+          best_at=''
           for idx in "${!agents[@]}"; do
-            [ "${agents[$idx]}" = "$agent" ] || continue
             base=$((8 + idx * 3))
-            [ -n "${fields[$base]:-}" ] || agent=''
-            break
+            candidate_state="${fields[$base]:-}"
+            [ -n "$candidate_state" ] || continue
+            candidate_at="${fields[$((base + 1))]:-}"
+            if [ -z "$agent" ]; then
+              agent="${agents[$idx]}"
+            fi
+            if [ -n "$candidate_at" ] && [ "$candidate_at" -eq "$candidate_at" ] 2>/dev/null; then
+              if [ -z "$best_at" ] || [ "$candidate_at" -gt "$best_at" ]; then
+                best_at="$candidate_at"
+                agent="${agents[$idx]}"
+              fi
+            fi
           done
         else
           agent=''

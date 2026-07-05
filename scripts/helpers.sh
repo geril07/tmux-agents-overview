@@ -49,10 +49,11 @@ AGENT_PROCESS_NAMES=(
 )
 
 # Process names that are too broad to identify an agent by themselves. The
-# picker only accepts these when a process probe or stamped state confirms the
-# agent.
+# picker only accepts these when a process probe or stamped state resolves
+# them back to a registered agent.
 AGENT_HOST_PROCESS_NAMES=(
-  "codex node"
+  "node"
+  "npm"
 )
 
 # agent_process_names <agent>
@@ -84,16 +85,16 @@ all_agent_process_names() {
   printf '%s' "$out"
 }
 
-# agent_host_process_names <agent>
-# Echoes generic host process names that require extra confirmation.
-agent_host_process_names() {
-  local agent="$1" entry id n out=""
+# all_agent_host_process_names
+# Echoes the generic host process names that require extra confirmation.
+all_agent_host_process_names() {
+  local entry out="" seen
+  declare -A seen=()
   for entry in "${AGENT_HOST_PROCESS_NAMES[@]}"; do
-    id="${entry%% *}"
-    [ "$id" = "$agent" ] || continue
-    for n in ${entry#* }; do
-      [ -n "$out" ] && out="$out $n" || out="$n"
-    done
+    [ -n "$entry" ] || continue
+    [ -n "${seen[$entry]:-}" ] && continue
+    seen["$entry"]=1
+    [ -n "$out" ] && out="$out $entry" || out="$entry"
   done
   printf '%s' "$out"
 }

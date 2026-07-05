@@ -10,7 +10,8 @@ claude claude
 ]]
 
 local DEFAULT_HOST_REGISTRY = [[
-codex node
+node
+npm
 ]]
 
 local function shell_quote(value)
@@ -85,7 +86,7 @@ local function parse_registries()
   local agents = {}
   local agent_index = {}
   local process_owner = {}
-  local host_owner = {}
+  local host_names = {}
 
   for _, line in ipairs(split_lines(process_registry)) do
     local fields = split_words(line)
@@ -103,15 +104,12 @@ local function parse_registries()
 
   for _, line in ipairs(split_lines(host_registry)) do
     local fields = split_words(line)
-    local agent = fields[1]
-    if agent and agent ~= "" then
-      for index = 2, #fields do
-        host_owner[fields[index]] = agent
-      end
+    for index = 1, #fields do
+      host_names[fields[index]] = true
     end
   end
 
-  return agents, agent_index, process_owner, host_owner
+  return agents, agent_index, process_owner, host_names
 end
 
 local function normalize_ps_tty(tty)
@@ -219,7 +217,7 @@ local function read_panes(format)
   return rows
 end
 
-local function probe_host_agents(rows, agents, agent_index, host_owner)
+local function probe_host_agents(rows, process_owner, host_names)
   local seen_host_tty = {}
   local host_ttys = {}
   local host_probe_agents = {}
@@ -228,7 +226,7 @@ local function probe_host_agents(rows, agents, agent_index, host_owner)
   for _, fields in ipairs(rows) do
     local command = fields[6] or ""
     local tty = fields[8] or ""
-    if host_owner[command] and tty ~= "" and not seen_host_tty[tty] then
+    if host_names[command] and tty ~= "" and not seen_host_tty[tty] then
       seen_host_tty[tty] = true
       table.insert(host_ttys, tty)
     end
@@ -238,12 +236,17 @@ local function probe_host_agents(rows, agents, agent_index, host_owner)
     return host_probe_agents, host_probe_authoritative
   end
 
-  local output = run("ps -C " .. shell_quote(table.concat(agents, ",")) .. " -o tty=,pgid=,tpgid=,comm=")
+  local process_names = {}
+  for command in pairs(process_owner) do
+    table.insert(process_names, command)
+  end
+
+  local output = run("ps -C " .. shell_quote(table.concat(process_names, ",")) .. " -o tty=,pgid=,tpgid=,comm=")
   for _, line in ipairs(split_lines(output)) do
     local ps_tty, pgid, tpgid, command = line:match("^%s*(%S+)%s+(%S+)%s+(%S+)%s+(%S+)")
     local tty = normalize_ps_tty(ps_tty)
-    if tty and seen_host_tty[tty] and pgid == tpgid and agent_index[command] then
-      host_probe_agents[tty] = command
+    if tty and seen_host_tty[tty] and pgid == tpgid and process_owner[command] then
+      host_probe_agents[tty] = process_owner[command]
       host_probe_authoritative[tty] = true
     end
   end
@@ -268,8 +271,8 @@ local function probe_host_agents(rows, agents, agent_index, host_owner)
     for _, line in ipairs(split_lines(fallback_output)) do
       local ps_tty, command = line:match("^%s*(%S+)%s+(%S+)")
       local tty = normalize_ps_tty(ps_tty)
-      if tty and seen_host_tty[tty] and agent_index[command] then
-        host_probe_agents[tty] = command
+      if tty and seen_host_tty[tty] and process_owner[command] then
+        host_probe_agents[tty] = process_owner[command]
       end
     end
   end
@@ -277,20 +280,38 @@ local function probe_host_agents(rows, agents, agent_index, host_owner)
   return host_probe_agents, host_probe_authoritative
 end
 
-local function has_agent_state(fields, agent, agent_index)
-  local index = agent_index[agent]
-  if not index then
-    return false
+local function resolve_stamped_agent(fields, agents, agent_index)
+  local chosen = nil
+  local best_at = nil
+
+  for _, agent in ipairs(agents) do
+    local index = agent_index[agent]
+    if index then
+      local base = 9 + (index - 1) * 3
+      local state = fields[base] or ""
+      if state ~= "" then
+        if not chosen then
+          chosen = agent
+        end
+
+        local at = fields[base + 1] or ""
+        local at_num = tonumber(at)
+        if at_num and (not best_at or at_num > best_at) then
+          best_at = at_num
+          chosen = agent
+        end
+      end
+    end
   end
-  local base = 9 + (index - 1) * 3
-  return (fields[base] or "") ~= ""
+
+  return chosen
 end
 
 local function main()
-  local agents, agent_index, process_owner, host_owner = parse_registries()
+  local agents, agent_index, process_owner, host_names = parse_registries()
   local columns = get_tmux_option("@agents_overview_columns", "pane,status,age,cwd")
   local rows = read_panes(build_tmux_format(agents))
-  local host_probe_agents, host_probe_authoritative = probe_host_agents(rows, agents, agent_index, host_owner)
+  local host_probe_agents, host_probe_authoritative = probe_host_agents(rows, process_owner, host_names)
   local now = os.time()
   local output_rows = {}
 
@@ -304,20 +325,13 @@ local function main()
     local cwd = fields[7] or ""
     local tty = fields[8] or ""
     local agent = process_owner[command]
-    local host_backed = false
+    local host_backed = host_names[command] == true
 
-    if not agent then
-      agent = host_owner[command]
-      host_backed = agent ~= nil
-    end
-
-    if host_backed and agent then
-      if host_probe_agents[tty] == agent then
-        -- confirmed by process probe
+    if host_backed then
+      if host_probe_agents[tty] then
+        agent = host_probe_agents[tty]
       elseif not host_probe_authoritative[tty] then
-        if not has_agent_state(fields, agent, agent_index) then
-          agent = nil
-        end
+        agent = resolve_stamped_agent(fields, agents, agent_index)
       else
         agent = nil
       end

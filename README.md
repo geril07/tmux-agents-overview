@@ -15,9 +15,9 @@ options as the state store and `fzf` as the overlay UI.
 
 - `prefix + o` opens the agent-pane picker.
 - Lists tmux panes whose foreground command is `opencode`, `pi`, `codex`, or
-  `claude`, plus panes running a registered host process such as Codex under
-  `node` when a tty process probe confirms the agent — across all sessions and
-  windows.
+  `claude`, plus panes running a registered host process such as `node` or
+  `npm` when a tty process probe confirms the real agent — across all sessions
+  and windows.
 - Shows `working`, `waiting`, `idle`, or `unknown` for each.
 - `enter` jumps to the selected tmux pane.
 - `ctrl-x` kills the selected tmux pane.
@@ -40,8 +40,8 @@ The picker works for any of the four agents even without the optional hook
 setup when tmux reports the CLI name as the foreground command — those panes
 show as `unknown`. Hooks and extensions add the colors, the "needs attention"
 classification, and a fallback detection signal for agents hosted under
-another registered process name, such as Codex panes whose foreground command
-is `node`.
+another registered process name, such as panes launched through `node` or
+`npm`.
 
 ## Install
 
@@ -227,8 +227,8 @@ set -g @agents_overview_columns 'pane,status,age,agent'
   selected row, and dispatches row generation to Bash by default or Lua when
   `@agents_overview_runtime 'lua'` is set.
 - The row generator reads tmux pane options in a single `list-panes -a` call,
-  includes panes with a known foreground command or a confirmed host process,
-  and formats rows for `fzf`.
+  includes panes with a known foreground command or a confirmed generic host
+  process, and formats rows for `fzf`.
 - Each agent's adapter turns that agent's events into `state.sh` calls:
   - **OpenCode**: a JS plugin (`scripts/adapters/opencode.js`) listens to
      OpenCode's `event` callback and spawns `state.sh opencode <state> [reason]`.
@@ -270,9 +270,10 @@ tmux server exits or the pane is killed.
 The picker includes panes whose `pane_current_command` is one of the known
 agent process names, even if no hook has fired yet. Those command-only rows
 show as `unknown`. It also includes panes whose current command is a registered
-host process, such as `node` for Codex, when a tty process probe finds a
-matching agent process name such as `codex`. If process probing is unavailable,
-it falls back to the matching `@agent_<id>_state` option.
+host process, such as `node` or `npm`, when a tty process probe finds a
+matching agent process name such as `codex`, `opencode`, `pi`, or `claude`. If
+process probing is unavailable, it falls back to the most recently stamped
+`@agent_<id>_state` option.
 This avoids keeping a pane visible after an agent exits back to a shell or an
 unrelated process.
 
@@ -341,8 +342,8 @@ Codex has no native "asking the user a question" event, so the
      "myagent  myagent-cli"
    )
    ```
-2. If the agent is hosted by a generic executable name, such as `node`, add
-   that host command to `AGENT_HOST_PROCESS_NAMES` instead of
+2. If the agent is often hosted by a generic executable name, such as `node`
+   or `npm`, add that host command to `AGENT_HOST_PROCESS_NAMES` instead of
    `AGENT_PROCESS_NAMES`, so it is only used with process/state confirmation.
 3. Drop `scripts/adapters/<id>.sh` (or `.js` / `.ts` for a plugin-runtime
    system)

@@ -22,7 +22,8 @@ codex    codex
 claude   claude"""
 
 DEFAULT_HOST_REGISTRY = """\
-codex node"""
+node
+npm"""
 
 
 def run(cmd, *args):
@@ -48,7 +49,7 @@ def parse_registries():
     agents = []
     agent_index = {}
     process_owner = {}
-    host_owner = {}
+    host_names = set()
 
     for line in split_lines(raw_process):
         parts = line.split()
@@ -65,10 +66,10 @@ def parse_registries():
         parts = line.split()
         if not parts:
             continue
-        for name in parts[1:]:
-            host_owner[name] = parts[0]
+        for name in parts:
+            host_names.add(name)
 
-    return agents, agent_index, process_owner, host_owner
+    return agents, agent_index, process_owner, host_names
 
 
 def normalize_ps_tty(tty):
@@ -136,13 +137,13 @@ def build_tmux_format(agents):
     return fmt
 
 
-def probe_host_agents(rows, agents, agent_index, host_owner):
+def probe_host_agents(rows, process_owner, host_names):
     seen = set()
     host_ttys = []
     for fields in rows:
         tty = fields[7] if len(fields) > 7 else ""
         cmd = fields[5] if len(fields) > 5 else ""
-        if cmd in host_owner and tty and tty not in seen:
+        if cmd in host_names and tty and tty not in seen:
             seen.add(tty)
             host_ttys.append(tty)
 
@@ -152,14 +153,14 @@ def probe_host_agents(rows, agents, agent_index, host_owner):
     probe = {}
     authoritative = {}
 
-    ps_out = run("ps", "-C", ",".join(agents), "-o", "tty=,pgid=,tpgid=,comm=")
+    ps_out = run("ps", "-C", ",".join(process_owner), "-o", "tty=,pgid=,tpgid=,comm=")
     for line in ps_out.splitlines():
         parts = line.strip().split(None, 3)
         if len(parts) < 4:
             continue
         tty = normalize_ps_tty(parts[0])
-        if tty in seen and parts[1] == parts[2] and parts[3] in agent_index:
-            probe[tty] = parts[3]
+        if tty in seen and parts[1] == parts[2] and parts[3] in process_owner:
+            probe[tty] = process_owner[parts[3]]
             authoritative[tty] = True
 
     fallback_ttys = [t for t in host_ttys if t not in authoritative]
@@ -172,22 +173,38 @@ def probe_host_agents(rows, agents, agent_index, host_owner):
             if len(parts) < 2:
                 continue
             tty = normalize_ps_tty(parts[0])
-            if tty in seen and parts[1] in agent_index:
-                probe[tty] = parts[1]
+            if tty in seen and parts[1] in process_owner:
+                probe[tty] = process_owner[parts[1]]
 
     return probe, authoritative
 
 
-def has_agent_state(fields, agent, agent_index):
-    idx = agent_index.get(agent)
-    if idx is None:
-        return False
-    base = 8 + idx * 3
-    return bool(fields[base]) if len(fields) > base else False
+def resolve_stamped_agent(fields, agents, agent_index):
+    chosen = None
+    best_at = None
+
+    for agent in agents:
+        idx = agent_index.get(agent)
+        if idx is None:
+            continue
+        base = 8 + idx * 3
+        state = fields[base] if len(fields) > base else ""
+        if not state:
+            continue
+
+        if chosen is None:
+            chosen = agent
+
+        at = fields[base + 1] if len(fields) > base + 1 else ""
+        if at.isdigit() and (best_at is None or int(at) > best_at):
+            best_at = int(at)
+            chosen = agent
+
+    return chosen
 
 
 def main():
-    agents, agent_index, process_owner, host_owner = parse_registries()
+    agents, agent_index, process_owner, host_names = parse_registries()
     columns = get_tmux_option("@agents_overview_columns", "pane,status,age,cwd")
     now = int(time.time())
 
@@ -195,7 +212,7 @@ def main():
     raw = run("tmux", "list-panes", "-a", "-F", fmt)
     rows = [line.split("\t") for line in raw.splitlines() if line.strip()]
 
-    host_probe, host_authoritative = probe_host_agents(rows, agents, agent_index, host_owner)
+    host_probe, host_authoritative = probe_host_agents(rows, process_owner, host_names)
 
     out = []
     for fields in rows:
@@ -206,15 +223,13 @@ def main():
         agent = process_owner.get(command)
         host_backed = False
         if agent is None:
-            agent = host_owner.get(command)
-            host_backed = agent is not None
+            host_backed = command in host_names
 
-        if host_backed and agent:
-            if host_probe.get(tty) == agent:
-                pass
+        if host_backed:
+            if tty in host_probe:
+                agent = host_probe[tty]
             elif tty not in host_authoritative:
-                if not has_agent_state(fields, agent, agent_index):
-                    agent = None
+                agent = resolve_stamped_agent(fields, agents, agent_index)
             else:
                 agent = None
 

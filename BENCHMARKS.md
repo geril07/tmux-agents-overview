@@ -4,7 +4,7 @@ Reusable commands for measuring row-generation performance on a live tmux sessio
 
 ## Session Shape
 
-Count panes and see how many are using `node` as the foreground command:
+Count panes and see how many are using `node` or `npm` as the foreground command:
 
 ```sh
 tmux list-panes -a -F '#{pane_id}	#{pane_current_command}	#{pane_tty}'
@@ -43,15 +43,15 @@ Shows which runtime the picker will use right now:
 tmux show-option -gqv @agents_overview_runtime
 ```
 
-## Codex TTY Trace
+## Host-Process TTY Trace
 
-Useful when checking why a `node` pane resolves to `codex`:
+Useful when checking why a `node` or `npm` pane resolves to a specific agent:
 
 ```sh
 tmux list-panes -a -F '#{pane_id}	#{session_name}:#{window_index}.#{pane_index}	#{pane_current_command}	#{pane_tty}	#{pane_current_path}'
 ps -t pts/12 -o pid=,ppid=,pgid=,tpgid=,stat=,comm=,args=
 ps -t pts/12 -o comm=
-ps -C codex,opencode,claude -o tty=,pgid=,tpgid=,comm=
+ps -C codex,opencode,pi,claude -o tty=,pgid=,tpgid=,comm=
 ```
 
 Replace `pts/12` with the tty you want to inspect.
