@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Interactive picker for tmux panes running or reporting a known coding agent
-# (opencode, codex, or claude).
+# (opencode, pi, codex, or claude).
 #
 #   picker.sh        fzf picker
 #   picker.sh --list print rows only, used by fzf reload bindings

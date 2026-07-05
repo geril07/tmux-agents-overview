@@ -3,10 +3,10 @@
 On-demand tmux popup for answering: which tmux panes have a coding-agent CLI
 running, what state are they in, and where should I jump next?
 
-Supports **OpenCode**, **Claude Code**, and **Codex CLI** out of the box. Add
-another agent by dropping a single `scripts/adapters/<id>.sh` (or `.js` for
-in-process plugin systems) and a row in `scripts/helpers.sh` — nothing else
-needs to change.
+Supports **OpenCode**, **Pi**, **Claude Code**, and **Codex CLI** out of the
+box. Add another agent by dropping a single `scripts/adapters/<id>.sh` (or
+`.js` / `.ts` for in-process plugin systems) and a row in
+`scripts/helpers.sh` — nothing else needs to change.
 
 This is intentionally smaller than a persistent sidebar. It uses tmux pane
 options as the state store and `fzf` as the overlay UI.
@@ -14,10 +14,10 @@ options as the state store and `fzf` as the overlay UI.
 ## Features
 
 - `prefix + o` opens the agent-pane picker.
-- Lists tmux panes whose foreground command is `opencode`, `codex`, or
+- Lists tmux panes whose foreground command is `opencode`, `pi`, `codex`, or
   `claude`, plus panes running a registered host process such as Codex under
-  `node` when a tty process probe confirms the agent — across all sessions
-  and windows.
+  `node` when a tty process probe confirms the agent — across all sessions and
+  windows.
 - Shows `working`, `waiting`, `idle`, or `unknown` for each.
 - `enter` jumps to the selected tmux pane.
 - `ctrl-x` kills the selected tmux pane.
@@ -30,16 +30,18 @@ options as the state store and `fzf` as the overlay UI.
 - [fzf](https://github.com/junegunn/fzf)
 - One of:
   - [OpenCode](https://opencode.ai/) (auto-installed bridge)
+  - [Pi](https://pi.dev) (auto-installed extension)
   - [Claude Code](https://claude.com/claude-code) (`claude` CLI, manual settings.json merge)
   - [Codex CLI](https://github.com/openai/codex) (`codex` CLI, manual config.toml merge)
 - bash
 - Optional: `lua` or `python3` for faster row generation (`@agents_overview_runtime 'lua'` or `'python'`)
 
-The picker works for any of the three agents even without the optional hook
+The picker works for any of the four agents even without the optional hook
 setup when tmux reports the CLI name as the foreground command — those panes
-show as `unknown`. Hooks add the colors, the "needs attention" classification,
-and a fallback detection signal for agents hosted under another registered
-process name, such as Codex panes whose foreground command is `node`.
+show as `unknown`. Hooks and extensions add the colors, the "needs attention"
+classification, and a fallback detection signal for agents hosted under
+another registered process name, such as Codex panes whose foreground command
+is `node`.
 
 ## Install
 
@@ -57,6 +59,9 @@ On first load the plugin will:
 
 - Symlink `scripts/adapters/opencode.js` into `~/.config/opencode/plugins/`
   (skipped silently if OpenCode isn't installed).
+- Symlink `scripts/adapters/pi.ts` into `~/.pi/agent/extensions/`
+  (or `$PI_CODING_AGENT_DIR/extensions/`, skipped silently if Pi isn't
+  installed).
 - Bind `prefix + o` to the picker.
 
 Claude and Codex have no plugin runtime; the plugin does not touch
@@ -72,11 +77,11 @@ git clone https://github.com/geril07/tmux-agents-overview ~/.tmux/plugins/tmux-a
 ```
 
 The canonical path `~/.tmux/plugins/tmux-agents-overview` is the install
-location the OpenCode plugin symlink points at, so the JS bridge works
-without further action. The Claude/Codex per-agent setup commands below
-also assume this path; if you cloned somewhere else, the entry script
-will auto-create a symlink from the canonical path to your checkout on
-first load and the commands will work as written. Set
+location the OpenCode/Pi symlinks point at, so those bridges work without
+further action. The Claude/Codex per-agent setup commands below also assume
+this path; if you cloned somewhere else, the entry script will auto-create a
+symlink from the canonical path to your checkout on first load and the
+commands will work as written. Set
 `TMUX_AGENTS_OVERVIEW_NO_SYMLINK=1` in the environment before sourcing
 the entry script to opt out of the auto-symlink.
 
@@ -90,7 +95,7 @@ Reload tmux config with `tmux source-file ~/.tmux.conf`.
 
 ## Per-agent setup
 
-The picker works for any of the three supported agents without further setup.
+The picker works for any of the four supported agents without further setup.
 The colored state, however, requires the agent to stamp its status onto the
 tmux pane. How that happens is different per agent:
 
@@ -103,6 +108,16 @@ OpenCode. Opt out with:
 
 ```tmux
 set -g @agents_overview_install_opencode 'off'
+```
+
+### Pi (auto)
+
+The TS extension in `scripts/adapters/pi.ts` is symlinked into
+`~/.pi/agent/extensions/` when the plugin loads, if `~/.pi/agent` exists.
+Set `PI_CODING_AGENT_DIR` to use Pi's alternate config path. Opt out with:
+
+```tmux
+set -g @agents_overview_install_pi 'off'
 ```
 
 ### Claude Code (one-time manual merge)
@@ -163,6 +178,7 @@ set -g @agents_overview_popup_height    '50%'
 set -g @agents_overview_columns         'pane,status,age,cwd'
 set -g @agents_overview_runtime         'bash'
 set -g @agents_overview_install_opencode    'on'
+set -g @agents_overview_install_pi          'on'
 ```
 
 `@agents_overview_columns` is a comma-separated list. Supported columns are
@@ -190,7 +206,7 @@ hits) but the first `prefix + o` invocation is noticeably slower.
 `lua` is the fastest option. `python` is a middle ground with similar
 per-pane scaling and no JIT dependency.
 
-- `agent` shows the resolved agent id from the registry (`opencode`,
+- `agent` shows the resolved agent id from the registry (`opencode`, `pi`,
   `codex`, or `claude`), regardless of which process name matched.
 - `command` shows the raw `pane_current_command` (e.g. `opencode`).
 
@@ -204,8 +220,8 @@ set -g @agents_overview_columns 'pane,status,age,agent'
 
 - `agents_overview.tmux` ensures `~/.tmux/plugins/tmux-agents-overview`
   points at the install (auto-symlink if missing), binds the key, publishes
-  the `state.sh` path so the OpenCode plugin can find it, and symlinks
-  the OpenCode plugin if OpenCode is installed.
+  the `state.sh` path so plugin-runtime adapters can find it, and symlinks the
+  OpenCode plugin / Pi extension if those agents are installed.
 - `scripts/list.sh` opens the popup and runs `scripts/picker.sh`.
 - `scripts/picker.sh` opens `fzf`, jumps to or kills panes based on the
   selected row, and dispatches row generation to Bash by default or Lua when
@@ -215,10 +231,13 @@ set -g @agents_overview_columns 'pane,status,age,agent'
   and formats rows for `fzf`.
 - Each agent's adapter turns that agent's events into `state.sh` calls:
   - **OpenCode**: a JS plugin (`scripts/adapters/opencode.js`) listens to
-    OpenCode's `event` callback and spawns `state.sh opencode <state> [reason]`.
+     OpenCode's `event` callback and spawns `state.sh opencode <state> [reason]`.
+  - **Pi**: a TS extension (`scripts/adapters/pi.ts`) listens to Pi's
+    `session_start`, `agent_start`, `agent_end`, and `session_shutdown`
+    events and spawns `state.sh pi <state> [reason]`.
   - **Claude Code**: a `hooks` block in `~/.claude/settings.json` runs
-    `state.sh claude <state> [reason]` per event. The fragment is
-    generated by running `bash scripts/adapters/claude.sh` — see
+     `state.sh claude <state> [reason]` per event. The fragment is
+     generated by running `bash scripts/adapters/claude.sh` — see
     [Per-agent setup](#per-agent-setup).
   - **Codex CLI**: a `[hooks]` table in `~/.codex/config.toml` runs
     `state.sh codex <state> [reason]` per event. The fragment is
@@ -229,7 +248,7 @@ set -g @agents_overview_columns 'pane,status,age,agent'
 
 The plugin does not launch any of the agents. Start them normally inside
 tmux; the overview shows their panes as soon as the bridge reports state
-or a pane running one of the three CLIs is detected.
+or a pane running one of the four CLIs is detected.
 
 ## State Model
 
@@ -242,7 +261,7 @@ prefix:
 @agent_<id>_reason    busy | retry | permission | question | done | child | error
 ```
 
-`<id>` is one of `opencode`, `codex`, `claude`.
+`<id>` is one of `opencode`, `pi`, `codex`, `claude`.
 
 State lives in tmux, not on disk. It survives tmux client disconnects
 because it is attached to the tmux server, and it disappears when the
@@ -276,6 +295,16 @@ question.rejected      -> working / busy
 session.compacted      -> working / busy
 session.error          -> unknown / error
 plugin dispose         -> clear
+```
+
+Pi (`scripts/adapters/pi.ts`):
+
+```text
+session_start idle      -> idle    / done
+session_start busy      -> working / busy
+agent_start             -> working / busy
+agent_end               -> idle    / done
+session_shutdown quit   -> clear
 ```
 
 Claude Code (`scripts/adapters/claude.sh`):
@@ -315,7 +344,8 @@ Codex has no native "asking the user a question" event, so the
 2. If the agent is hosted by a generic executable name, such as `node`, add
    that host command to `AGENT_HOST_PROCESS_NAMES` instead of
    `AGENT_PROCESS_NAMES`, so it is only used with process/state confirmation.
-3. Drop `scripts/adapters/<id>.sh` (or `.js` for a plugin-runtime system)
+3. Drop `scripts/adapters/<id>.sh` (or `.js` / `.ts` for a plugin-runtime
+   system)
    that defines a registrations table the same way `claude.sh` and
    `codex.sh` do. If the adapter is a bash script, also add a
    `run-as-script` guard at the bottom that calls the snippet emitter
@@ -324,7 +354,7 @@ Codex has no native "asking the user a question" event, so the
 4. Document the merge step in **Per-agent setup** so users know how to
    wire the agent's hooks.
 
-The picker, the OpenCode auto-install, and the manual hook fragment all
+The picker, the OpenCode/Pi auto-install, and the manual hook fragment all
 read from the registries and the per-adapter table.
 
 ## License

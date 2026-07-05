@@ -37,12 +37,13 @@ short_home_path() {
 #
 # Add a new agent by appending unique commands to AGENT_PROCESS_NAMES and
 # generic host commands to AGENT_HOST_PROCESS_NAMES, then dropping a
-# scripts/adapters/<id>.sh (bash) or <id>.js (JS plugin) into place. The
+# scripts/adapters/<id>.sh (bash) or <id>.js/.ts (plugin runtime) into place. The
 # picker, the install script, and the snippet generator all read from these
 # tables — no other change is required.
 
 AGENT_PROCESS_NAMES=(
   "opencode opencode"
+  "pi       pi"
   "codex    codex"
   "claude   claude"
 )

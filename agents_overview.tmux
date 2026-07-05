@@ -2,7 +2,7 @@
 # tmux-agents-overview
 #
 # On-demand tmux popup that lists tmux panes running a known coding-agent
-# CLI (opencode, codex, or claude) and lets you jump or kill them.
+# CLI (opencode, pi, codex, or claude) and lets you jump or kill them.
 
 CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/helpers.sh
@@ -36,13 +36,13 @@ PLUGIN_DIR="$CANONICAL_DIR"
 
 overview_key="$(get_tmux_option @agents_overview_key 'o')"
 
-# Publish state.sh path for the OpenCode JS plugin to find.
+# Publish state.sh path for plugin-runtime adapters to find.
 tmux set-option -gq @agents_overview_state_script "$PLUGIN_DIR/scripts/state.sh"
 
 tmux bind-key "$overview_key" \
   run-shell "'$PLUGIN_DIR/scripts/list.sh' '#{client_name}' '#{pane_id}' '#{session_name}' '#{window_index}' '#{pane_index}'"
 
-# Auto-install the OpenCode JS plugin into ~/.config/opencode/plugins/.
+# Auto-install plugin-runtime adapters when the agent is installed.
 # Claude and Codex have no plugin runtime — see README for how to wire
 # their hooks manually.
 install_opencode_plugin() {
@@ -63,4 +63,23 @@ install_opencode_plugin() {
   ln -s "$source" "$target"
 }
 
+install_pi_extension() {
+  if [ "$(get_tmux_option @agents_overview_install_pi 'on')" = "off" ]; then
+    return 0
+  fi
+  local agent_dir extensions_dir source target
+  agent_dir="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
+  extensions_dir="$agent_dir/extensions"
+  source="$PLUGIN_DIR/scripts/adapters/pi.ts"
+  target="$extensions_dir/tmux-agents-overview.ts"
+
+  [ -f "$source" ] || return 0
+  [ -d "$agent_dir" ] || return 0
+
+  mkdir -p "$extensions_dir"
+  rm -f "$target"
+  ln -s "$source" "$target"
+}
+
 install_opencode_plugin
+install_pi_extension
