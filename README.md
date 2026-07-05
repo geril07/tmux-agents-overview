@@ -16,8 +16,8 @@ options as the state store and `fzf` as the overlay UI.
 - `prefix + o` opens the agent-pane picker.
 - Lists tmux panes whose foreground command is `opencode`, `codex`, or
   `claude`, plus panes running a registered host process such as Codex under
-  `node` when the foreground process group confirms the agent — across all
-  sessions and windows.
+  `node` when a tty process probe confirms the agent — across all sessions
+  and windows.
 - Shows `working`, `waiting`, `idle`, or `unknown` for each.
 - `enter` jumps to the selected tmux pane.
 - `ctrl-x` kills the selected tmux pane.
@@ -251,9 +251,9 @@ tmux server exits or the pane is killed.
 The picker includes panes whose `pane_current_command` is one of the known
 agent process names, even if no hook has fired yet. Those command-only rows
 show as `unknown`. It also includes panes whose current command is a registered
-host process, such as `node` for Codex, when a foreground-process probe finds a
-process or argv path basename matching the agent id, such as `codex`. If process
-probing is unavailable, it falls back to the matching `@agent_<id>_state` option.
+host process, such as `node` for Codex, when a tty process probe finds a
+matching agent process name such as `codex`. If process probing is unavailable,
+it falls back to the matching `@agent_<id>_state` option.
 This avoids keeping a pane visible after an agent exits back to a shell or an
 unrelated process.
 

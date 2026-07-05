@@ -10,7 +10,6 @@ Interface matches rows.lua and rows.bash:
 """
 
 import os
-import re
 import subprocess
 import sys
 import time
@@ -77,16 +76,6 @@ def normalize_ps_tty(tty):
     if tty.startswith("/"):
         return tty
     return "/dev/" + tty
-
-
-def process_line_matches_agent(command, agent, args):
-    if command == agent:
-        return True
-    for arg in (args or "").split():
-        base = arg.rstrip("/").rsplit("/", 1)[-1]
-        if base == agent:
-            return True
-    return False
 
 
 def rank_for_state(state):
@@ -172,21 +161,18 @@ def probe_host_agents(rows, agents, agent_index, host_owner):
             probe[tty] = parts[3]
             authoritative[tty] = True
 
-    argv_ttys = [t for t in host_ttys if t not in authoritative]
-    if argv_ttys:
-        argv_out = run("ps", "-t", ",".join(argv_ttys), "-o", "tty=,pgid=,tpgid=,comm=,args=")
-        for t in argv_ttys:
+    fallback_ttys = [t for t in host_ttys if t not in authoritative]
+    if fallback_ttys:
+        fallback_out = run("ps", "-t", ",".join(fallback_ttys), "-o", "tty=,comm=")
+        for t in fallback_ttys:
             authoritative[t] = True
-        for line in argv_out.splitlines():
-            parts = line.strip().split(None, 4)
-            if len(parts) < 5:
+        for line in fallback_out.splitlines():
+            parts = line.strip().split(None, 1)
+            if len(parts) < 2:
                 continue
             tty = normalize_ps_tty(parts[0])
-            if tty in seen and parts[1] == parts[2]:
-                for agent in agents:
-                    if process_line_matches_agent(parts[3], agent, parts[4] if len(parts) >= 5 else ""):
-                        probe[tty] = agent
-                        break
+            if tty in seen and parts[1] in agent_index:
+                probe[tty] = parts[1]
 
     return probe, authoritative
 

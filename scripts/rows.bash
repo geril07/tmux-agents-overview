@@ -136,27 +136,13 @@ normalize_ps_tty() {
   esac
 }
 
-process_line_matches_agent() {
-  local proc_command="$1" agent="$2" args="${3:-}"
-  local arg base
-
-  [ "$proc_command" = "$agent" ] && return 0
-
-  for arg in $args; do
-    base="${arg##*/}"
-    [ "$base" = "$agent" ] && return 0
-  done
-
-  return 1
-}
-
 # ---- Main ----
 main() {
   local now columns fmt agent
-  local -a agents=() rows=() host_ttys=() argv_ttys=()
+  local -a agents=() rows=() host_ttys=() fallback_ttys=()
   local row entry agent_csv ps_output
-  local ps_tty normalized_tty pgid tpgid proc_command args host_agent
-  local argv_tty_csv
+  local ps_tty normalized_tty pgid tpgid proc_command host_agent
+  local fallback_tty_csv
   declare -A seen_host_tty=()
   declare -A host_probe_agents=()
   declare -A host_probe_authoritative=()
@@ -214,27 +200,25 @@ main() {
 
     for tty in "${host_ttys[@]}"; do
       [ -n "${host_probe_authoritative[$tty]:-}" ] && continue
-      argv_ttys+=("$tty")
+      fallback_ttys+=("$tty")
     done
 
-    if [ "${#argv_ttys[@]}" -gt 0 ]; then
-      argv_tty_csv="$(IFS=,; printf '%s' "${argv_ttys[*]}")"
-      if ps_output="$(ps -t "$argv_tty_csv" -o tty=,pgid=,tpgid=,comm=,args= 2>/dev/null)"; then
-        for tty in "${argv_ttys[@]}"; do
+    if [ "${#fallback_ttys[@]}" -gt 0 ]; then
+      fallback_tty_csv="$(IFS=,; printf '%s' "${fallback_ttys[*]}")"
+      if ps_output="$(ps -t "$fallback_tty_csv" -o tty=,comm= 2>/dev/null)"; then
+        for tty in "${fallback_ttys[@]}"; do
           host_probe_authoritative["$tty"]=1
         done
 
         while IFS= read -r row; do
           [ -n "$row" ] || continue
-          read -r ps_tty pgid tpgid proc_command args <<<"$row"
+          read -r ps_tty proc_command <<<"$row"
           normalized_tty="$(normalize_ps_tty "$ps_tty")" || continue
           [ -n "${seen_host_tty[$normalized_tty]:-}" ] || continue
-          [ -n "$pgid" ] && [ -n "$tpgid" ] && [ -n "$proc_command" ] || continue
-          [ "$tpgid" != "-1" ] || continue
-          [ "$pgid" = "$tpgid" ] || continue
+          [ -n "$proc_command" ] || continue
 
           for agent in "${agents[@]}"; do
-            if process_line_matches_agent "$proc_command" "$agent" "$args"; then
+            if [ "$proc_command" = "$agent" ]; then
               host_probe_agents["$normalized_tty"]="$agent"
               break
             fi

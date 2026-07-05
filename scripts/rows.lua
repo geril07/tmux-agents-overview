@@ -123,19 +123,6 @@ local function normalize_ps_tty(tty)
   return "/dev/" .. tty
 end
 
-local function process_line_matches_agent(command, agent, args)
-  if command == agent then
-    return true
-  end
-  for arg in tostring(args or ""):gmatch("%S+") do
-    local basename = arg:match("([^/]+)$") or arg
-    if basename == agent then
-      return true
-    end
-  end
-  return false
-end
-
 local function rank_for_state(state)
   if state == "waiting" then
     return 0
@@ -260,33 +247,28 @@ local function probe_host_agents(rows, agents, agent_index, host_owner)
     end
   end
 
-  local argv_ttys = {}
+  local fallback_ttys = {}
   for _, tty in ipairs(host_ttys) do
     if not host_probe_authoritative[tty] then
-      table.insert(argv_ttys, tty)
+      table.insert(fallback_ttys, tty)
     end
   end
 
-  if #argv_ttys == 0 then
+  if #fallback_ttys == 0 then
     return host_probe_agents, host_probe_authoritative
   end
 
-  local argv_output, ok = run("ps -t " .. shell_quote(table.concat(argv_ttys, ",")) .. " -o tty=,pgid=,tpgid=,comm=,args=")
+  local fallback_output, ok = run("ps -t " .. shell_quote(table.concat(fallback_ttys, ",")) .. " -o tty=,comm=")
   if ok then
-    for _, tty in ipairs(argv_ttys) do
+    for _, tty in ipairs(fallback_ttys) do
       host_probe_authoritative[tty] = true
     end
 
-    for _, line in ipairs(split_lines(argv_output)) do
-      local ps_tty, pgid, tpgid, command, args = line:match("^%s*(%S+)%s+(%S+)%s+(%S+)%s+(%S+)%s*(.*)$")
+    for _, line in ipairs(split_lines(fallback_output)) do
+      local ps_tty, command = line:match("^%s*(%S+)%s+(%S+)")
       local tty = normalize_ps_tty(ps_tty)
-      if tty and seen_host_tty[tty] and pgid == tpgid then
-        for _, agent in ipairs(agents) do
-          if process_line_matches_agent(command, agent, args) then
-            host_probe_agents[tty] = agent
-            break
-          end
-        end
+      if tty and seen_host_tty[tty] and agent_index[command] then
+        host_probe_agents[tty] = command
       end
     end
   end
