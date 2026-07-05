@@ -14,10 +14,10 @@ options as the state store and `fzf` as the overlay UI.
 ## Features
 
 - `prefix + o` opens the agent-pane picker.
-- Lists tmux panes whose foreground command is `opencode` / `open-code`,
-  `codex`, or `claude`, plus panes running a registered host process such as
-  Codex under `node` when the foreground process group confirms the agent —
-  across all sessions and windows.
+- Lists tmux panes whose foreground command is `opencode`, `codex`, or
+  `claude`, plus panes running a registered host process such as Codex under
+  `node` when the foreground process group confirms the agent — across all
+  sessions and windows.
 - Shows `working`, `waiting`, `idle`, or `unknown` for each.
 - `enter` jumps to the selected tmux pane.
 - `ctrl-x` kills the selected tmux pane.
@@ -192,7 +192,7 @@ per-pane scaling and no JIT dependency.
 
 - `agent` shows the resolved agent id from the registry (`opencode`,
   `codex`, or `claude`), regardless of which process name matched.
-- `command` shows the raw `pane_current_command` (e.g. `open-code`).
+- `command` shows the raw `pane_current_command` (e.g. `opencode`).
 
 For example, to show which agent is running instead of the cwd:
 
@@ -306,7 +306,7 @@ Codex has no native "asking the user a question" event, so the
 1. Append a row to `AGENT_PROCESS_NAMES` in `scripts/helpers.sh`:
    ```bash
    AGENT_PROCESS_NAMES=(
-     "opencode opencode open-code"
+     "opencode opencode"
      "codex    codex"
      "claude   claude"
      "myagent  myagent-cli"

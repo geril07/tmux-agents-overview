@@ -17,7 +17,7 @@ import time
 
 
 DEFAULT_PROCESS_REGISTRY = """\
-opencode opencode open-code
+opencode opencode
 codex    codex
 claude   claude"""
 

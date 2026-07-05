@@ -42,7 +42,7 @@ short_home_path() {
 # tables — no other change is required.
 
 AGENT_PROCESS_NAMES=(
-  "opencode opencode open-code"
+  "opencode opencode"
   "codex    codex"
   "claude   claude"
 )

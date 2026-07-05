@@ -11,7 +11,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ---- Built-in defaults (same as helpers.sh) ----
 DEFAULT_AGENT_PROCESS_NAMES=(
-  "opencode opencode open-code"
+  "opencode opencode"
   "codex    codex"
   "claude   claude"
 )

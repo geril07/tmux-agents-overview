@@ -3,7 +3,7 @@
 -- Emits the same tab-separated row contract as emit_rows_bash in picker.sh.
 
 local DEFAULT_PROCESS_REGISTRY = [[
-opencode opencode open-code
+opencode opencode
 codex codex
 claude claude
 ]]
