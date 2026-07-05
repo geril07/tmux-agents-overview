@@ -13,7 +13,7 @@ current_session="${3:-}"
 current_window_index="${4:-}"
 current_pane_index="${5:-}"
 w="$(get_tmux_option @agents_overview_popup_width '50%')"
-h="$(get_tmux_option @agents_overview_popup_height '75%')"
+h="$(get_tmux_option @agents_overview_popup_height '50%')"
 
 picker_command="$DIR/picker.sh '$current_pane' '$current_session' '$current_window_index' '$current_pane_index'"
 

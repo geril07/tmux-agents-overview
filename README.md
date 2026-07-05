@@ -159,7 +159,7 @@ Set these before loading the plugin:
 ```tmux
 set -g @agents_overview_key             'o'
 set -g @agents_overview_popup_width     '50%'
-set -g @agents_overview_popup_height    '75%'
+set -g @agents_overview_popup_height    '50%'
 set -g @agents_overview_columns         'pane,status,age,cwd'
 set -g @agents_overview_runtime         'bash'
 set -g @agents_overview_install_opencode    'on'
