@@ -325,6 +325,7 @@ Codex CLI (`scripts/adapters/codex.sh`):
 SessionStart:startup|resume   -> idle    / done
 UserPromptSubmit              -> working / busy
 PermissionRequest             -> waiting / permission
+PreToolUse                    -> working / busy
 Stop                          -> idle    / done
 ```
 
