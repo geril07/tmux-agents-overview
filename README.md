@@ -315,6 +315,8 @@ SessionStart                   -> idle    / done
 UserPromptSubmit               -> working / busy
 Notification:permission_prompt -> waiting / permission
 PreToolUse:AskUserQuestion     -> waiting / question
+PostToolUse                    -> working / busy
+PostToolUseFailure             -> working / busy
 Stop                           -> idle    / done
 SessionEnd                     -> clear
 ```
