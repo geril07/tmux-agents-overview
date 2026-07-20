@@ -165,16 +165,16 @@ def probe_host_agents(rows, process_owner, host_names):
 
     fallback_ttys = [t for t in host_ttys if t not in authoritative]
     if fallback_ttys:
-        fallback_out = run("ps", "-t", ",".join(fallback_ttys), "-o", "tty=,comm=")
+        fallback_out = run("ps", "-t", ",".join(fallback_ttys), "-o", "tty=,pgid=,tpgid=,comm=")
         for t in fallback_ttys:
             authoritative[t] = True
         for line in fallback_out.splitlines():
-            parts = line.strip().split(None, 1)
-            if len(parts) < 2:
+            parts = line.strip().split(None, 3)
+            if len(parts) < 4:
                 continue
             tty = normalize_ps_tty(parts[0])
-            if tty in seen and parts[1] in process_owner:
-                probe[tty] = process_owner[parts[1]]
+            if tty in seen and parts[1] == parts[2] and parts[3] in process_owner:
+                probe[tty] = process_owner[parts[3]]
 
     return probe, authoritative
 

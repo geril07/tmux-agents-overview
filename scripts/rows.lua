@@ -262,16 +262,16 @@ local function probe_host_agents(rows, process_owner, host_names)
     return host_probe_agents, host_probe_authoritative
   end
 
-  local fallback_output, ok = run("ps -t " .. shell_quote(table.concat(fallback_ttys, ",")) .. " -o tty=,comm=")
+  local fallback_output, ok = run("ps -t " .. shell_quote(table.concat(fallback_ttys, ",")) .. " -o tty=,pgid=,tpgid=,comm=")
   if ok then
     for _, tty in ipairs(fallback_ttys) do
       host_probe_authoritative[tty] = true
     end
 
     for _, line in ipairs(split_lines(fallback_output)) do
-      local ps_tty, command = line:match("^%s*(%S+)%s+(%S+)")
+      local ps_tty, pgid, tpgid, command = line:match("^%s*(%S+)%s+(%S+)%s+(%S+)%s+(%S+)")
       local tty = normalize_ps_tty(ps_tty)
-      if tty and seen_host_tty[tty] and process_owner[command] then
+      if tty and seen_host_tty[tty] and pgid == tpgid and process_owner[command] then
         host_probe_agents[tty] = process_owner[command]
       end
     end

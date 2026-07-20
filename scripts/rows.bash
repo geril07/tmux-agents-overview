@@ -198,17 +198,19 @@ main() {
 
     if [ "${#fallback_ttys[@]}" -gt 0 ]; then
       fallback_tty_csv="$(IFS=,; printf '%s' "${fallback_ttys[*]}")"
-      if ps_output="$(ps -t "$fallback_tty_csv" -o tty=,comm= 2>/dev/null)"; then
+      if ps_output="$(ps -t "$fallback_tty_csv" -o tty=,pgid=,tpgid=,comm= 2>/dev/null)"; then
         for tty in "${fallback_ttys[@]}"; do
           host_probe_authoritative["$tty"]=1
         done
 
         while IFS= read -r row; do
           [ -n "$row" ] || continue
-          read -r ps_tty proc_command <<<"$row"
+          read -r ps_tty pgid tpgid proc_command <<<"$row"
           normalized_tty="$(normalize_ps_tty "$ps_tty")" || continue
           [ -n "${seen_host_tty[$normalized_tty]:-}" ] || continue
-          [ -n "$proc_command" ] || continue
+          [ -n "$pgid" ] && [ -n "$tpgid" ] && [ -n "$proc_command" ] || continue
+          [ "$tpgid" != "-1" ] || continue
+          [ "$pgid" = "$tpgid" ] || continue
 
           agent="$(pane_owned_by "$proc_command")" || agent=''
           [ -n "$agent" ] || continue
