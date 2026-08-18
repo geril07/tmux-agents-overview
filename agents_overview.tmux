@@ -2,7 +2,7 @@
 # tmux-agents-overview
 #
 # On-demand tmux popup that lists tmux panes running a known coding-agent
-# CLI (opencode, pi, codex, or claude) and lets you jump or kill them.
+# CLI (opencode, pi, codex, claude, or antigravity) and lets you jump or kill them.
 
 CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/helpers.sh
@@ -43,7 +43,7 @@ tmux bind-key "$overview_key" \
   run-shell "'$PLUGIN_DIR/scripts/list.sh' '#{client_name}' '#{pane_id}' '#{session_name}' '#{window_index}' '#{pane_index}'"
 
 # Auto-install plugin-runtime adapters when the agent is installed.
-# Claude and Codex have no plugin runtime — see README for how to wire
+# Claude, Codex, and Antigravity have no plugin runtime — see README for how to wire
 # their hooks manually.
 install_opencode_plugin() {
   if [ "$(get_tmux_option @agents_overview_install_opencode 'on')" = "off" ]; then

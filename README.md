@@ -3,7 +3,7 @@
 On-demand tmux popup for answering: which tmux panes have a coding-agent CLI
 running, what state are they in, and where should I jump next?
 
-Supports **OpenCode**, **Pi**, **Claude Code**, and **Codex CLI** out of the
+Supports **OpenCode**, **Pi**, **Claude Code**, **Codex CLI**, and **Antigravity** out of the
 box. Add another agent by dropping a single `scripts/adapters/<id>.sh` (or
 `.js` / `.ts` for in-process plugin systems) and a row in
 `scripts/helpers.sh` — nothing else needs to change.
@@ -14,10 +14,10 @@ options as the state store and `fzf` as the overlay UI.
 ## Features
 
 - `prefix + o` opens the agent-pane picker.
-- Lists tmux panes whose foreground command is `opencode`, `pi`, `codex`, or
-  `claude`, plus panes running a registered host process such as `node` or
-  `npm` when a tty process probe confirms the real agent — across all sessions
-  and windows.
+- Lists tmux panes whose foreground command is `opencode`, `pi`, `codex`,
+  `claude`, or `agy`/`antigravity`, plus panes running a registered host
+  process such as `node` or `npm` when a tty process probe confirms the real
+  agent — across all sessions and windows.
 - Shows `working`, `waiting`, `idle`, or `unknown` for each.
 - `enter` jumps to the selected tmux pane.
 - `ctrl-x` kills the selected tmux pane.
@@ -33,10 +33,11 @@ options as the state store and `fzf` as the overlay UI.
   - [Pi](https://pi.dev) (auto-installed extension)
   - [Claude Code](https://claude.com/claude-code) (`claude` CLI, manual settings.json merge)
   - [Codex CLI](https://github.com/openai/codex) (`codex` CLI, manual config.toml merge)
+  - [Antigravity](https://antigravity.google) (`agy` CLI, manual hooks.json merge)
 - bash
 - Optional: `lua` or `python3` for faster row generation (`@agents_overview_runtime 'lua'` or `'python'`)
 
-The picker works for any of the four agents even without the optional hook
+The picker works for any of the five agents even without the optional hook
 setup when tmux reports the CLI name as the foreground command — those panes
 show as `unknown`. Hooks and extensions add the colors, the "needs attention"
 classification, and a fallback detection signal for agents hosted under
@@ -64,8 +65,9 @@ On first load the plugin will:
   installed).
 - Bind `prefix + o` to the picker.
 
-Claude and Codex have no plugin runtime; the plugin does not touch
-`~/.claude/settings.json` or `~/.codex/config.toml`. See
+Claude, Codex, and Antigravity have no plugin runtime; the plugin does not touch
+`~/.claude/settings.json`, `~/.codex/config.toml`, or
+`~/.gemini/config/hooks.json`. See
 [Per-agent setup](#per-agent-setup) for the one-time merge step.
 
 ### Manual
@@ -78,8 +80,8 @@ git clone https://github.com/geril07/tmux-agents-overview ~/.tmux/plugins/tmux-a
 
 The canonical path `~/.tmux/plugins/tmux-agents-overview` is the install
 location the OpenCode/Pi symlinks point at, so those bridges work without
-further action. The Claude/Codex per-agent setup commands below also assume
-this path; if you cloned somewhere else, the entry script will auto-create a
+further action. The Claude/Codex/Antigravity per-agent setup commands below also
+assume this path; if you cloned somewhere else, the entry script will auto-create a
 symlink from the canonical path to your checkout on first load and the
 commands will work as written. Set
 `TMUX_AGENTS_OVERVIEW_NO_SYMLINK=1` in the environment before sourcing
@@ -95,7 +97,7 @@ Reload tmux config with `tmux source-file ~/.tmux.conf`.
 
 ## Per-agent setup
 
-The picker works for any of the four supported agents without further setup.
+The picker works for any of the five supported agents without further setup.
 The colored state, however, requires the agent to stamp its status onto the
 tmux pane. How that happens is different per agent:
 
@@ -152,6 +154,22 @@ bash ~/.tmux/plugins/tmux-agents-overview/scripts/adapters/codex.sh \
 
 The Codex hook commands call `scripts/state.sh codex <state> <reason>`.
 
+### Antigravity (one-time manual merge)
+
+Antigravity CLI (`agy`) has lifecycle hooks configured via JSON; the plugin
+does not touch `~/.gemini/config/hooks.json` or `.agents/hooks.json`. Run the
+adapter to print a hook definition, then merge it under your top-level hook
+configurations in `~/.gemini/config/hooks.json` (or `.agents/hooks.json` in your
+project):
+
+```sh
+bash ~/.tmux/plugins/tmux-agents-overview/scripts/adapters/antigravity.sh \
+  ~/.tmux/plugins/tmux-agents-overview/scripts/state.sh \
+  > /tmp/agents-overview-antigravity.json
+```
+
+The Antigravity hook commands call `scripts/state.sh antigravity <state> <reason>`.
+
 ## Usage
 
 | Key | Action |
@@ -207,7 +225,7 @@ hits) but the first `prefix + o` invocation is noticeably slower.
 per-pane scaling and no JIT dependency.
 
 - `agent` shows the resolved agent id from the registry (`opencode`, `pi`,
-  `codex`, or `claude`), regardless of which process name matched.
+  `codex`, `claude`, or `antigravity`), regardless of which process name matched.
 - `command` shows the raw `pane_current_command` (e.g. `opencode`).
 
 For example, to show which agent is running instead of the cwd:
@@ -243,12 +261,16 @@ set -g @agents_overview_columns 'pane,status,age,agent'
     `state.sh codex <state> [reason]` per event. The fragment is
     generated by running `bash scripts/adapters/codex.sh` — see
     [Per-agent setup](#per-agent-setup).
+  - **Antigravity**: a `hooks.json` block in `~/.gemini/config/hooks.json` or
+    `.agents/hooks.json` runs `state.sh antigravity <state> [reason]` per event.
+    The fragment is generated by running `bash scripts/adapters/antigravity.sh` —
+    see [Per-agent setup](#per-agent-setup).
 - `scripts/state.sh` writes the latest state into the tmux pane options
   `@agent_<id>_state` / `_state_at` / `_reason`.
 
 The plugin does not launch any of the agents. Start them normally inside
 tmux; the overview shows their panes as soon as the bridge reports state
-or a pane running one of the four CLIs is detected.
+or a pane running one of the five CLIs is detected.
 
 ## State Model
 
@@ -261,7 +283,7 @@ prefix:
 @agent_<id>_reason    busy | retry | permission | question | done | child | error
 ```
 
-`<id>` is one of `opencode`, `pi`, `codex`, `claude`.
+`<id>` is one of `opencode`, `pi`, `codex`, `claude`, `antigravity`.
 
 State lives in tmux, not on disk. It survives tmux client disconnects
 because it is attached to the tmux server, and it disappears when the
@@ -271,9 +293,9 @@ The picker includes panes whose `pane_current_command` is one of the known
 agent process names, even if no hook has fired yet. Those command-only rows
 show as `unknown`. It also includes panes whose current command is a registered
 host process, such as `node` or `npm`, when a tty process probe finds a
-matching agent process name such as `codex`, `opencode`, `pi`, or `claude`. If
-process probing is unavailable, it falls back to the most recently stamped
-`@agent_<id>_state` option.
+matching agent process name such as `codex`, `opencode`, `pi`, `claude`, `agy`,
+or `antigravity`. If process probing is unavailable, it falls back to the most
+recently stamped `@agent_<id>_state` option.
 This avoids keeping a pane visible after an agent exits back to a shell or an
 unrelated process.
 
@@ -333,6 +355,15 @@ Stop                          -> idle    / done
 
 Codex has no native "asking the user a question" event, so the
 `waiting / question` state is left out for Codex panes.
+
+Antigravity (`scripts/adapters/antigravity.sh`):
+
+```text
+PreInvocation           -> working / busy
+PreToolUse:ask_question -> waiting / question
+PostToolUse:*           -> working / busy
+Stop                    -> idle    / done
+```
 
 ## Adding a new agent
 

@@ -42,10 +42,11 @@ short_home_path() {
 # tables — no other change is required.
 
 AGENT_PROCESS_NAMES=(
-  "opencode opencode"
-  "pi       pi"
-  "codex    codex"
-  "claude   claude"
+  "opencode    opencode"
+  "pi          pi"
+  "codex       codex"
+  "claude      claude"
+  "antigravity agy antigravity"
 )
 
 # Process names that are too broad to identify an agent by themselves. The

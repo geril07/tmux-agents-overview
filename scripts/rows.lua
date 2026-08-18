@@ -7,6 +7,7 @@ opencode opencode
 pi pi
 codex codex
 claude claude
+antigravity agy antigravity
 ]]
 
 local DEFAULT_HOST_REGISTRY = [[

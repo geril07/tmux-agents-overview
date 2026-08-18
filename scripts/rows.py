@@ -19,7 +19,8 @@ DEFAULT_PROCESS_REGISTRY = """\
 opencode opencode
 pi       pi
 codex    codex
-claude   claude"""
+claude   claude
+antigravity agy antigravity"""
 
 DEFAULT_HOST_REGISTRY = """\
 node

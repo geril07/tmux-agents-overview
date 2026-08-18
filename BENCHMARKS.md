@@ -51,7 +51,7 @@ Useful when checking why a `node` or `npm` pane resolves to a specific agent:
 tmux list-panes -a -F '#{pane_id}	#{session_name}:#{window_index}.#{pane_index}	#{pane_current_command}	#{pane_tty}	#{pane_current_path}'
 ps -t pts/12 -o pid=,ppid=,pgid=,tpgid=,stat=,comm=,args=
 ps -t pts/12 -o comm=
-ps -C codex,opencode,pi,claude -o tty=,pgid=,tpgid=,comm=
+ps -C codex,opencode,pi,claude,agy,antigravity -o tty=,pgid=,tpgid=,comm=
 ```
 
 Replace `pts/12` with the tty you want to inspect.
